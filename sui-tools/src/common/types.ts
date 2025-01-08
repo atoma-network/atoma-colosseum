@@ -1,3 +1,6 @@
+import { Pool as AftermathPool } from 'aftermath-ts-sdk';
+
+// Price related types
 export interface TokenPrice {
   current: number;
   previous: number;
@@ -12,6 +15,7 @@ export interface PriceAlert {
   callback: (price: number) => void;
 }
 
+// Pool related types
 export interface PoolInfo {
   id: string;
   tokens: string[];
@@ -21,6 +25,23 @@ export interface PoolInfo {
   apy?: number;
 }
 
+export interface Pool extends AftermathPool {
+  id: string;
+  tokens: string[];
+  reserves: bigint[];
+  fees: number;
+  tvl?: number;
+  apy?: number;
+}
+
+export interface AftermathPoolStats {
+  tvl: number;
+  volume24h: number;
+  apy: number;
+  fees: number;
+}
+
+// Transaction related types
 export interface SwapParams {
   tokenIn: string;
   tokenOut: string;
@@ -43,9 +64,30 @@ export interface TokenBalance {
   decimals?: number;
 }
 
-export interface AftermathPoolStats {
-  tvl: number;
-  volume24h: number;
-  apy: number;
-  fees: number;
+// Network related types
+export interface NetworkConfig {
+  fullnode: string;
+  faucet?: string;
+}
+
+export interface NetworkConfigs {
+  MAINNET: NetworkConfig;
+  TESTNET: NetworkConfig;
+}
+
+export interface TokenAddresses {
+  [key: string]: string;
+}
+
+export interface AftermathAddresses {
+  POOLS: {
+    [key: string]: string;
+  };
+  ROUTER: string;
+}
+
+export interface TransactionDefaults {
+  slippage: number;
+  gasBudget: number;
+  referralFee: number;
 }

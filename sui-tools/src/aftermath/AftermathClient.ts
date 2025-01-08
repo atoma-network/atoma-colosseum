@@ -1,5 +1,5 @@
-import { Aftermath } from 'aftermath-ts-sdk';
-import { PoolInfo, SwapParams, TokenPrice } from '../common/types';
+import { Aftermath, Pool as AftermathPool } from 'aftermath-ts-sdk';
+import { PoolInfo, TokenPrice } from '../common/types';
 
 export class AftermathClient {
   private aftermath: Aftermath;
@@ -24,31 +24,32 @@ export class AftermathClient {
     };
   }
 
+  private transformPoolToPoolInfo(pool: AftermathPool, poolId: string): PoolInfo {
+    // We'll need to use the appropriate SDK methods to get this information
+    return {
+      id: poolId,
+      tokens: [], // TODO: Get from pool data
+      reserves: [], // TODO: Get from pool data
+      fees: 0, // TODO: Get from pool data
+      tvl: 0, // TODO: Get from pool data
+      apy: 0 // TODO: Get from pool data
+    };
+  }
+
   async getPool(poolId: string): Promise<PoolInfo | undefined> {
     const pools = this.aftermath.Pools();
     const pool = await pools.getPool({ objectId: poolId });
     
-    return {
-      id: poolId,
-      tokens: pool.tokens,
-      reserves: pool.reserves.map(BigInt),
-      fees: pool.fees,
-      tvl: pool.tvl,
-      apy: pool.apy
-    };
+    if (!pool) return undefined;
+    return this.transformPoolToPoolInfo(pool, poolId);
   }
 
   async getAllPools(): Promise<PoolInfo[]> {
     const pools = this.aftermath.Pools();
     const allPools = await pools.getAllPools();
     
-    return allPools.map(pool => ({
-      id: pool.objectId,
-      tokens: pool.tokens,
-      reserves: pool.reserves.map(BigInt),
-      fees: pool.fees,
-      tvl: pool.tvl,
-      apy: pool.apy
-    }));
+    return allPools.map((pool, index) => 
+      this.transformPoolToPoolInfo(pool, `pool-${index}`) // You might need to get the actual pool ID differently
+    );
   }
 } 
