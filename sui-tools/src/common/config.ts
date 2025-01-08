@@ -21,11 +21,11 @@ export const TOKEN_ADDRESSES = {
 // Aftermath protocol addresses
 export const AFTERMATH_ADDRESSES = {
   POOLS: {
-    SUI_USDC: "0x...", // Add actual pool addresses
+    SUI_USDC: "0x...", //  pool addresses
     SUI_USDT: "0x...",
     WETH_USDC: "0x..."
   },
-  ROUTER: "0x...", // Add actual router address
+  ROUTER: "0x...", //router address
 };
 
 // Default transaction settings
