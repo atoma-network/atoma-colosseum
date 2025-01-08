@@ -43,7 +43,6 @@ async function main() {
       }
     });
 
-    // Listen for errors
     monitor.on('error', (error) => {
       console.error('❌ Price monitoring error:', error);
     });
@@ -55,5 +54,4 @@ async function main() {
   }
 }
 
-// Run the monitor
 main().catch(console.error); 

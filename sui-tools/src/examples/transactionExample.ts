@@ -5,7 +5,7 @@ async function main() {
   try {
     const txManager = new TransactionManager("MAINNET");
 
-    // Use a real wallet address that owns SUI tokens
+    //We will use a real wallet address that owns SUI tokens
     const fromAddress = "0x0f19fce2f6d3c2fb3779c22c6cc94d28c504f3839a87d6f192b2d79a9c4c49c9";
     const toAddress = "0x0f19fce2f6d3c2fb3779c22c6cc94d28c504f3839a87d6f192b2d79a9c4c49c9";
 
