@@ -1,0 +1,24 @@
+{
+  "name": "sui-lending-agent",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node src/examples/priceMonitorExample.ts",
+    "transfer": "ts-node src/examples/transactionExample.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@mysten/sui": "^1.18.0",
+    "@mysten/sui.js": "^0.54.1",
+    "aftermath-ts-sdk": "latest",
+    "events": "^3.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
