@@ -1,11 +1,24 @@
-use crate::config::SecretGuessingConfig;
-use std::time::Duration;
-use sui_sdk::{SuiClient, SuiClientBuilder};
+use crate::{
+    config::SecretGuessingConfig, types::ChatCompletionResponse, SECRET_GUESSING_MODULE_NAME,
+};
+use events::{NewGuessEvent, SecretGuessingEvent, SecretGuessingEventIdentifier};
+use prompts::GuessPromptResponse;
+use serde_json::json;
+use std::{str::FromStr, time::Duration};
+use sui_sdk::{
+    rpc_types::{EventFilter, EventPage},
+    types::{
+        base_types::{ObjectID, SuiAddress},
+        Identifier,
+    },
+    SuiClient, SuiClientBuilder,
+};
 use thiserror::Error;
-use tracing::{info, instrument};
+use tokio::sync::watch::Receiver;
+use tracing::{error, info, instrument, trace};
 
-/// The Atoma contract db module name.
-const SECRET_GUESSING_MODULE_NAME: &str = "secret_guessing";
+/// The Atoma API URL, for confidential chat completions
+const ATOMA_API_URL: &str = "https://api.atomacloud.cloud/v1/confidential/chat/completions";
 
 /// The duration to wait for new events in seconds, if there are no new events.
 const DURATION_TO_WAIT_FOR_NEW_EVENTS_IN_MILLIS: u64 = 100;
@@ -17,13 +30,34 @@ pub(crate) type Result<T> = std::result::Result<T, SuiEventSubscriberError>;
 /// This struct provides functionality to subscribe to and process events
 /// from the Sui blockchain based on specified filters.
 pub struct SuiEventSubscriber {
+    /// Configuration settings for the Secret Guessing application
     pub config: SecretGuessingConfig,
+
+    /// Event filter used to specify which blockchain events to subscribe to,
+    /// configured to watch the Secret Guessing module
+    pub filter: EventFilter,
+
+    /// The secret phrase or word that players are trying to guess
+    pub secret: String,
+
+    /// Channel receiver for shutdown signals to gracefully stop the subscriber
+    pub shutdown_signal: Receiver<bool>,
 }
 
 impl SuiEventSubscriber {
     /// Constructor
-    pub fn new(config: SecretGuessingConfig) -> Self {
-        Self { config }
+    pub async fn new(config: SecretGuessingConfig, shutdown_signal: Receiver<bool>) -> Self {
+        let filter = EventFilter::MoveModule {
+            package: ObjectID::from_str(&config.package_id).unwrap(),
+            module: Identifier::new(SECRET_GUESSING_MODULE_NAME).unwrap(),
+        };
+
+        Self {
+            config,
+            filter,
+            secret,
+            shutdown_signal,
+        }
     }
 
     /// Builds a SuiClient based on the provided configuration.
@@ -55,7 +89,9 @@ impl SuiEventSubscriber {
         if let Some(request_timeout) = config.request_timeout {
             client_builder = client_builder.request_timeout(Duration::from_millis(request_timeout));
         }
-        let client = client_builder.build(config.http_rpc_node_addr).await?;
+        let client = client_builder
+            .build(config.http_rpc_node_addr.clone())
+            .await?;
         info!(
             target: "sui_event_subscriber",
             "Client built successfully"
@@ -63,7 +99,227 @@ impl SuiEventSubscriber {
         Ok(client)
     }
 
-    pub fn run(&self) -> Result<()> {
+    /// Handles different types of Secret Guessing events received from the blockchain.
+    ///
+    /// This method processes various events emitted by the Secret Guessing smart contract,
+    /// delegating the handling of specific events to their respective handler functions.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - A `SecretGuessingEvent` enum representing the different types of events
+    ///            that can be processed:
+    ///   * `PublishEvent` - Logs when a new contract is published
+    ///   * `NewGuessEvent` - Triggers processing of a new guess
+    ///   * `RotateTdxQuoteEvent` - Handles TDX quote rotation events
+    ///   * `TDXQuoteResubmittedEvent` - Processes resubmitted TDX quotes
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Returns `Ok(())` if the event was handled successfully,
+    ///                  or a `SuiEventSubscriberError` if processing fails
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if any of the individual event handlers fail
+    /// during event processing.
+    #[instrument(level = "info", skip_all, fields(
+        package_id = %self.config.package_id
+    ))]
+    async fn handle_event(&self, event: SecretGuessingEvent, sender: SuiAddress) -> Result<()> {
+        match event {
+            SecretGuessingEvent::PublishEvent(event) => {
+                info!(
+                    target = "sui_event_subscriber",
+                    event = "publish-event",
+                    "PublishEvent: {:?}",
+                    event
+                );
+            }
+            SecretGuessingEvent::NewGuessEvent(event) => {
+                self.handle_new_guess_event(event, sender).await?;
+            }
+            SecretGuessingEvent::RotateTdxQuoteEvent(event) => {
+                handle_rotate_tdx_quote_event(event).await?;
+            }
+            SecretGuessingEvent::TDXQuoteResubmittedEvent(event) => {
+                handle_tdx_quote_resubmitted_event(event).await?;
+            }
+        }
+        Ok(())
+    }
+
+    #[instrument(level = "info", skip_all, fields(
+        event = "new-guess-event",
+        guess = %event.guess
+    ))]
+    async fn handle_new_guess_event(
+        &mut self,
+        client: &SuiClient,
+        event: NewGuessEvent,
+        sender: ObjectID,
+    ) -> Result<()> {
+        info!(
+            target = "sui_event_subscriber",
+            event = "new-guess-event",
+            "NewGuessEvent: {:?}",
+            event
+        );
+        let NewGuessEvent {
+            guess,
+            fee,
+            guess_count,
+            treasury_pool_balance,
+        } = event;
+
+        // TODO: Check if the guess is correct
+        let client = reqwest::Client::new();
+        let (system_prompt, user_prompt) = prompts::check_guess_prompt(&guess, &self.secret);
+        let response = client
+            .post(ATOMA_API_URL)
+            .json(&json!({
+                "model": self.config.model,
+                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                "max_tokens": 100
+            }))
+            .bearer_auth(&self.config.atoma_api_key)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(SuiEventSubscriberError::AtomaApiError(
+                response.error_for_status().unwrap_err(),
+            ));
+        }
+
+        let response_body: ChatCompletionResponse = serde_json::from_value(response.json().await?)?;
+        let answer = serde_json::from_str::<GuessPromptResponse>(
+            &response_body.choices[0].message.content.clone(),
+        )?;
+
+        if answer.is_correct {
+            info!(
+                target = "sui_event_subscriber",
+                event = "new-guess-event",
+                "Guess is correct for sender: {sender}, guess: {guess}, fee: {fee}, guess_count: {guess_count}, treasury_pool_balance: {treasury_pool_balance}"
+            );
+
+            let sui_client = Self::build_client(&self.config).await?;
+        }
+
+        Ok(())
+    }
+
+    #[instrument(level = "info", skip_all, fields(
+        package_id = %self.config.package_id
+    ))]
+    pub async fn run(mut self) -> Result<()> {
+        let package_id = self.config.package_id.clone();
+        let client = Self::build_client(&self.config).await?;
+
+        info!(
+            target = "atoma-sui-subscriber",
+            event = "subscriber-started",
+            "Starting to run events subscriber, for package: {package_id}"
+        );
+
+        let mut cursor = cursor::read_cursor_from_toml_file(&self.config.cursor_path)?;
+        loop {
+            tokio::select! {
+                    page = client.event_api().query_events(self.filter.clone(), cursor, self.config.limit, false) => {
+                        let EventPage {
+                            data,
+                            next_cursor,
+                            has_next_page,
+                        } = match page {
+                            Ok(page) => page,
+                            Err(e) => {
+                                error!(
+                                    target = "atoma-sui-subscriber",
+                                    event = "subscriber-read-events-error",
+                                    "Failed to read paged events, with error: {e}"
+                                );
+                                continue;
+                            }
+                        };
+                        cursor = next_cursor;
+
+                        for sui_event in data {
+                            let event_name = sui_event.type_.name;
+                            trace!(
+                                target = "sui_event_subscriber",
+                                event = "subscriber-received-new-event",
+                                event_name = %event_name,
+                                "Received new event: {event_name:#?}"
+                            );
+                            match SecretGuessingEventIdentifier::from_str(event_name.as_str()) {
+                                Ok(event_id) => {
+                                    let sender = sui_event.sender;
+                                    let event = match events::parse_event(event_id, sui_event.parsed_json) {
+                                        Ok(event) => event,
+                                        Err(e) => {
+                                            error!(
+                                                target = "atoma-sui-subscriber",
+                                                event = "subscriber-event-parse-error",
+                                                event_name = %event_name,
+                                                "Failed to parse event: {e}",
+                                            );
+                                            continue;
+                                        }
+                                    };
+                                    self.handle_event(event, sender).await?;
+                                }
+                                Err(e) => {
+                                    error!(
+                                        target = "atoma-sui-subscriber",
+                                        event = "subscriber-event-parse-error",
+                                        "Failed to parse event: {e}",
+                                    );
+                                    // NOTE: `AtomaEvent` didn't match any known event, so we skip it.
+                                }
+                            }
+                        }
+
+                        if !has_next_page {
+                            // Update the cursor file with the current cursor
+                            cursor::write_cursor_to_toml_file(cursor, &self.config.cursor_path)?;
+                            // No new events to read, so let's wait for a while
+                            trace!(
+                                target = "atoma-sui-subscriber",
+                                event = "subscriber-no-new-events",
+                                wait_duration = DURATION_TO_WAIT_FOR_NEW_EVENTS_IN_MILLIS,
+                                "No new events to read, the node is now synced with the Atoma protocol, waiting until the next synchronization..."
+                            );
+                            tokio::time::sleep(Duration::from_millis(
+                                DURATION_TO_WAIT_FOR_NEW_EVENTS_IN_MILLIS,
+                                ))
+                            .await;
+                        }
+                    }
+                    shutdown_signal_changed = self.shutdown_signal.changed() => {
+                        match shutdown_signal_changed {
+                            Ok(()) => {
+                                if *self.shutdown_signal.borrow() {
+                                    info!(
+                                    target = "atoma-sui-subscriber",
+                                    event = "subscriber-stopped",
+                                    "Shutdown signal received, gracefully stopping subscriber..."
+                                );
+                                // Update the config file with the current cursor
+                                cursor::write_cursor_to_toml_file(cursor, &self.config.cursor_path)?;
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            error!(
+                                target = "atoma-sui-subscriber",
+                                event = "subscriber-shutdown-signal-error",
+                                "Failed to receive shutdown signal: {e}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -72,8 +328,6 @@ impl SuiEventSubscriber {
 pub enum SuiEventSubscriberError {
     #[error("Failed to read events: {0}")]
     ReadEventsError(#[from] sui_sdk::error::Error),
-    #[error("Failed to parse event: {0}")]
-    SuiEventParseError(#[from] SuiEventParseError),
     #[error("Failed to deserialize event: {0}")]
     DeserializeError(#[from] serde_json::Error),
     #[error("Failed to send compute units to state manager")]
@@ -84,11 +338,18 @@ pub enum SuiEventSubscriberError {
     SerializeCursorError(#[from] toml::ser::Error),
     #[error("Failed to deserialize cursor: {0}")]
     DeserializeCursorError(#[from] toml::de::Error),
+    #[error("Invalid event: {0}")]
+    InvalidEvent(serde_json::Value),
+    #[error("Failed to send request to Atoma API: {0}")]
+    AtomaApiError(#[from] reqwest::Error),
 }
 
 pub(crate) mod events {
     use serde::{Deserialize, Serialize};
+    use serde_json::Value;
     use std::str::FromStr;
+
+    use super::SuiEventSubscriberError;
 
     /// The Secret Guessing contract events
     #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -97,6 +358,100 @@ pub(crate) mod events {
         NewGuessEvent(NewGuessEvent),
         RotateTdxQuoteEvent(RotateTdxQuoteEvent),
         TDXQuoteResubmittedEvent(TDXQuoteResubmittedEvent),
+    }
+
+    /// The Secret Guessing contract events identifiers
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub enum SecretGuessingEventIdentifier {
+        PublishEvent,
+        NewGuessEvent,
+        RotateTdxQuoteEvent,
+        TDXQuoteResubmittedEvent,
+    }
+
+    impl FromStr for SecretGuessingEventIdentifier {
+        type Err = SuiEventSubscriberError;
+
+        fn from_str(s: &str) -> Result<Self, Self::Err> {
+            Ok(match s {
+                "PublishEvent" => SecretGuessingEventIdentifier::PublishEvent,
+                "NewGuessEvent" => SecretGuessingEventIdentifier::NewGuessEvent,
+                "RotateTdxQuoteEvent" => SecretGuessingEventIdentifier::RotateTdxQuoteEvent,
+                "TDXQuoteResubmittedEvent" => {
+                    SecretGuessingEventIdentifier::TDXQuoteResubmittedEvent
+                }
+                _ => {
+                    return Err(SuiEventSubscriberError::InvalidEvent(Value::String(
+                        s.to_string(),
+                    )))
+                }
+            })
+        }
+    }
+
+    /// Parses a raw event value into a typed `SecretGuessingEvent` based on its identifier.
+    ///
+    /// This function takes an event identifier and a raw JSON value, and attempts to deserialize
+    /// the value into the corresponding event type. It handles all event types defined in the
+    /// `SecretGuessingEventIdentifier` enum.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - A `SecretGuessingEventIdentifier` indicating which type of event to parse
+    /// * `value` - A raw JSON `Value` containing the event data to be deserialized
+    ///
+    /// # Returns
+    ///
+    /// * `Result<SecretGuessingEvent, SuiEventSubscriberError>` - A Result containing either:
+    ///   * The parsed event as a `SecretGuessingEvent` enum variant
+    ///   * A `SuiEventSubscriberError` if parsing fails
+    ///
+    /// # Errors
+    ///
+    /// Returns `SuiEventSubscriberError` if:
+    /// * The JSON deserialization fails
+    /// * The event identifier doesn't match any known event type
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use serde_json::json;
+    ///
+    /// let event_id = SecretGuessingEventIdentifier::NewGuessEvent;
+    /// let value = json!({
+    ///     "fee": "100",
+    ///     "guess": "hello",
+    ///     "guess_count": "1",
+    ///     "treasury_pool_balance": 1000
+    /// });
+    ///
+    /// let parsed = parse_event(event_id, value)?;
+    /// match parsed {
+    ///     SecretGuessingEvent::NewGuessEvent(event) => {
+    ///         println!("Parsed guess: {}", event.guess);
+    ///     }
+    ///     _ => panic!("Unexpected event type")
+    /// }
+    /// ```
+    pub(crate) fn parse_event(
+        event: SecretGuessingEventIdentifier,
+        value: Value,
+    ) -> Result<SecretGuessingEvent, SuiEventSubscriberError> {
+        match event {
+            SecretGuessingEventIdentifier::PublishEvent => Ok(SecretGuessingEvent::PublishEvent(
+                serde_json::from_value(value)?,
+            )),
+            SecretGuessingEventIdentifier::NewGuessEvent => Ok(SecretGuessingEvent::NewGuessEvent(
+                serde_json::from_value(value)?,
+            )),
+            SecretGuessingEventIdentifier::RotateTdxQuoteEvent => Ok(
+                SecretGuessingEvent::RotateTdxQuoteEvent(serde_json::from_value(value)?),
+            ),
+            SecretGuessingEventIdentifier::TDXQuoteResubmittedEvent => Ok(
+                SecretGuessingEvent::TDXQuoteResubmittedEvent(serde_json::from_value(value)?),
+            ),
+            _ => Err(SuiEventSubscriberError::InvalidEvent(value)),
+        }
     }
 
     /// Event emitted when a new event is published
@@ -182,5 +537,158 @@ pub(crate) mod events {
     {
         let s = String::deserialize(deserializer)?;
         s.parse::<T>().map_err(serde::de::Error::custom)
+    }
+}
+
+pub(crate) mod cursor {
+    use sui_sdk::types::event::EventID;
+
+    use super::SuiEventSubscriberError;
+
+    /// Reads an event cursor from a TOML file.
+    ///
+    /// This function attempts to read and parse an event cursor from the specified file path.
+    /// If the file doesn't exist, it will return `None`. If the file
+    /// exists, it will attempt to parse its contents as an `EventID`.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - A string slice containing the path to the TOML file
+    ///
+    /// # Returns
+    ///
+    /// * `Result<Option<EventID>>` - Returns:
+    ///   * `Ok(Some(EventID))` if the file exists and was successfully parsed
+    ///   * `Ok(None)` if the file doesn't exist (and was created)
+    ///   * `Err(SuiEventSubscriberError)` if:
+    ///     * The file exists but couldn't be read
+    ///     * The file contents couldn't be parsed as TOML
+    ///     * The file couldn't be created when not found
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// let path = "cursor.toml";
+    /// match read_cursor_from_toml_file(path) {
+    ///     Ok(Some(cursor)) => println!("Read cursor: {:?}", cursor),
+    ///     Ok(None) => println!("No cursor found, created empty file"),
+    ///     Err(e) => eprintln!("Error reading cursor: {}", e),
+    /// }
+    /// ```
+    pub(crate) fn read_cursor_from_toml_file(
+        path: &str,
+    ) -> Result<Option<EventID>, SuiEventSubscriberError> {
+        let content = match std::fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(SuiEventSubscriberError::CursorFileError(e)),
+        };
+
+        Ok(Some(toml::from_str(&content)?))
+    }
+
+    /// Writes an event cursor to a TOML file.
+    ///
+    /// This function takes an optional event cursor and writes it to the specified file path
+    /// in TOML format. If the cursor is `None`, no file will be written.
+    ///
+    /// # Arguments
+    ///
+    /// * `cursor` - An `Option<EventID>` representing the event cursor to be written
+    /// * `path` - A string slice containing the path where the TOML file should be written
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Returns `Ok(())` if the write was successful, or an error if:
+    ///   * The cursor serialization to TOML fails
+    ///   * The file write operation fails
+    ///
+    /// # Examples
+    ///
+    /// ```rust,ignore
+    /// use sui_sdk::types::event::EventID;
+    ///
+    /// let cursor = Some(EventID::default());
+    /// let path = "cursor.toml";
+    /// write_cursor_to_toml_file(cursor, path).expect("Failed to write cursor");
+    /// ```
+    pub(crate) fn write_cursor_to_toml_file(
+        cursor: Option<EventID>,
+        path: &str,
+    ) -> Result<(), SuiEventSubscriberError> {
+        if let Some(cursor) = cursor {
+            let toml_str = toml::to_string(&cursor)?;
+            std::fs::write(path, toml_str)?;
+        }
+        Ok(())
+    }
+}
+
+pub(crate) mod prompts {
+    use serde::{Deserialize, Serialize};
+    /// Response structure for the guess checking prompt.
+    ///
+    /// This struct represents the parsed response from the AI model when checking
+    /// if a guess matches the secret. It contains both the boolean result and
+    /// a detailed explanation of why the guess was considered correct or incorrect.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(crate) struct GuessPromptResponse {
+        /// Boolean indicating whether the guess matches the secret
+        pub(crate) is_correct: bool,
+
+        /// Detailed explanation of why the guess was deemed correct or incorrect
+        pub(crate) explanation: String,
+    }
+
+    /// Creates system and user prompts for checking if a guess matches a secret.
+    ///
+    /// This function generates two prompts used to query an AI model to determine if a guess
+    /// matches a secret, either through exact matching or semantic equivalence.
+    ///
+    /// The system prompt instructs the AI model to:
+    /// - Return a JSON object with `is_correct` and `explanation` fields
+    /// - Compare guesses for both exact matches and semantic equivalence
+    /// - Consider cases like capitalization and alternative phrasings
+    ///
+    /// # Arguments
+    ///
+    /// * `guess` - The user's attempted guess
+    /// * `secret` - The actual secret to compare against
+    ///
+    /// # Returns
+    ///
+    /// A tuple containing:
+    /// * The system prompt that defines the AI's role and response format
+    /// * The user prompt that presents the specific guess/secret pair to evaluate
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let (system_prompt, user_prompt) = check_guess_prompt("Neil Armstrong", "First Man on the Moon");
+    /// // System prompt will contain instructions for the AI
+    /// // User prompt will contain the specific comparison to make
+    /// ```
+    pub(crate) fn check_guess_prompt(guess: &str, secret: &str) -> (String, String) {
+        let system_prompt = format!(
+            "You are a helpful assistant that checks if a guess is correct for a secret guessing game.
+            You will be given a guess and a secret, and you will need to determine if the guess is correct.
+            You will return a JSON object with the following fields:
+            - `is_correct`: a boolean indicating if the guess is correct
+            - `explanation`: a string explaining why the guess is correct or incorrect
+            In order to check if the guess is correct, you will need to compare the guess with the secret and
+            see if they either are exactly the same or if they have the same exact semantic meaning. That is, if
+            they refer to the same thing or concept in a direct way.
+            For example:
+            - 'hello' and 'hello' are exactly the same
+            - 'hello' and 'HELLO' are not exactly the same, but they have the same semantic meaning
+            - 'hello' and 'world' are not exactly the same, and they do not have the same semantic meaning
+            - 'Imperial Rome' and 'Roman Empire' have the same semantic meaning
+            - 'Imperial Rome' and 'Byzantine Empire' do not have the same semantic meaning
+            - 'Neil Armstrong' and 'First Man on the Moon' have the same semantic meaning
+            Output your answer in JSON format, following the schema defined above, and nothing else.
+        ");
+        let user_prompt =
+            format!("The guess is: {guess}\nThe secret is: {secret}\nIs the guess correct?");
+        (system_prompt, user_prompt)
     }
 }
