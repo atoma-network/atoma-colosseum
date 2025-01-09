@@ -29,10 +29,10 @@ export const AFTERMATH_ADDRESSES: AftermathAddresses = {
   },
   ROUTER: "0x0000000000000000000000000000000000000000000000000000000000000000" // Replace with actual router address
 };
-
 // Default transaction settings
 export const TX_DEFAULTS: TransactionDefaults = {
   slippage: 0.01, // 1%
   gasBudget: 2000000,
   referralFee: 0.001 // 0.1%
 };
+

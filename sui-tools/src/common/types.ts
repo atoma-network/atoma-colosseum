@@ -90,9 +90,9 @@ export interface AftermathAddresses {
   };
   ROUTER: string;
 }
-
 export interface TransactionDefaults {
   slippage: number;
   gasBudget: number;
   referralFee: number;
 }
+

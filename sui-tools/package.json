@@ -7,7 +7,8 @@
     "start": "ts-node src/examples/priceMonitorExample.ts",
     "transfer": "ts-node src/examples/transactionExample.ts",
     "rates": "ts-node src/examples/ratesExample.ts",
-    "aftermath": "ts-node src/examples/aftermathClientExample.ts"
+    "aftermath": "ts-node src/examples/aftermathClientExample.ts",
+    "wallet": "ts-node src/examples/walletExample.ts"
   },
   "keywords": [],
   "author": "",
