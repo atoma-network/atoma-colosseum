@@ -1,6 +1,64 @@
 import { Aftermath } from 'aftermath-ts-sdk';
 import { TokenPrice, PoolInfo } from '../common/types';
 
+// Add SDK type definitions
+interface CoinPriceInfo {
+  price: number;
+  priceChange24HoursPercentage: number;
+}
+
+interface CoinsToPriceInfo {
+  [key: string]: CoinPriceInfo;
+}
+
+interface SpotPriceParams {
+  coinInType: string;
+  coinOutType: string;
+  withFees?: boolean;
+}
+
+interface AftermathPool {
+  getSpotPrice(params: SpotPriceParams): number;
+  getTradeAmountOut(params: {
+    coinInType: string;
+    coinOutType: string;
+    coinInAmount: bigint;
+    referral?: boolean;
+  }): bigint;
+  getTradeAmountIn(params: {
+    coinInType: string;
+    coinOutType: string;
+    coinOutAmount: bigint;
+    referral?: boolean;
+  }): bigint;
+  getDepositEvents(params: {
+    cursor?: { txDigest: string; eventSeq: string };
+    limit?: number;
+  }): Promise<{
+    events: Array<{
+      poolId: string;
+      depositor: string;
+      types: string[];
+      deposits: bigint[];
+      lpMinted: bigint;
+    }>;
+    nextCursor?: { txDigest: string; eventSeq: string };
+  }>;
+  getWithdrawEvents(params: {
+    cursor?: { txDigest: string; eventSeq: string };
+    limit?: number;
+  }): Promise<{
+    events: Array<{
+      poolId: string;
+      withdrawer: string;
+      types: string[];
+      withdrawn: bigint[];
+      lpBurned: bigint;
+    }>;
+    nextCursor?: { txDigest: string; eventSeq: string };
+  }>;
+}
+
 let aftermathInstance: Aftermath | null = null;
 
 /**
@@ -159,4 +217,148 @@ export async function getPricesApi(network?: "MAINNET" | "TESTNET") {
 export async function getPoolsApi(network?: "MAINNET" | "TESTNET") {
   const aftermath = await initAftermath(network);
   return aftermath.Pools();
+}
+
+/**
+ * Adds batch price operations
+ * 
+ * @param coins - Array of token addresses
+ * @param network - Optional network override
+ * @returns Object containing token prices
+ * @throws Error if batch price fetch fails
+ * 
+ * @example
+ * const prices = await getCoinsPriceInfo(["0x2::sui::SUI", "0x2::sui::SUI"]);
+ * console.log(`Current price: $${prices["0x2::sui::SUI"].current}`);
+ * console.log(`24h change: ${prices["0x2::sui::SUI"].priceChange24h}%`);
+ */
+export async function getCoinsPriceInfo(
+  coins: string[],
+  network?: "MAINNET" | "TESTNET"
+): Promise<{[key: string]: TokenPrice}> {
+  const aftermath = await initAftermath(network);
+  const prices = aftermath.Prices();
+  const priceInfo = await prices.getCoinsToPriceInfo({ coins });
+  
+  // Convert CoinsToPriceInfo to our TokenPrice format
+  return Object.entries(priceInfo).reduce((acc, [key, value]) => {
+    acc[key] = {
+      current: value.price,
+      previous: value.price, // Todo: We could calculate this from 24h change if needed
+      lastUpdated: Date.now(),
+      priceChange24h: value.priceChange24HoursPercentage
+    };
+    return acc;
+  }, {} as {[key: string]: TokenPrice});
+}
+
+/**
+ * Adds pool calculations
+ * 
+ * @param poolId - Unique identifier of the pool
+ * @param coinInType - Token type of the input coin
+ * @param coinOutType - Token type of the output coin
+ * @param withFees - Whether to include fees in the calculation
+ * @param network - Optional network override
+ * @returns Spot price of the pool
+ * @throws Error if pool not found or calculation fails
+ * 
+ * @example
+ * const price = await getPoolSpotPrice("0x123...abc", "0x2::sui::SUI", "0x2::sui::SUI");
+ * console.log(`Current price: $${price}`);
+ */
+export async function getPoolSpotPrice(
+  poolId: string,
+  coinInType: string,
+  coinOutType: string,
+  withFees: boolean = true,
+  network?: "MAINNET" | "TESTNET"
+): Promise<number> {
+  const aftermath = await initAftermath(network);
+  const pools = aftermath.Pools();
+  const pool = await pools.getPool({ objectId: poolId });
+  
+  if (!pool) throw new Error(`Pool not found: ${poolId}`);
+  
+  // Type assertion after checking pool methods exist
+  if (typeof pool.getSpotPrice !== 'function') {
+    throw new Error('Pool does not support spot price calculation');
+  }
+  
+  return pool.getSpotPrice({
+    coinInType,
+    coinOutType,
+    withFees
+  });
+}
+
+/**
+ * Adds router functionality
+ * 
+ * @param coinInType - Token type of the input coin
+ * @param coinOutType - Token type of the output coin
+ * @param coinInAmount - Amount of the input coin
+ * @param network - Optional network override
+ * @returns Trade route information
+ * @throws Error if router not found or route calculation fails
+ * 
+ * @example
+ * const route = await getTradeRoute("0x2::sui::SUI", "0x2::sui::SUI", BigInt(100));
+ * console.log(`Route:`, route);
+ */
+export async function getTradeRoute(
+  coinInType: string,
+  coinOutType: string,
+  coinInAmount: bigint,
+  network?: "MAINNET" | "TESTNET"
+): Promise<any> {
+  const aftermath = await initAftermath(network);
+  const router = aftermath.Router();
+  return router.getCompleteTradeRouteGivenAmountIn({
+    coinInType,
+    coinOutType,
+    coinInAmount
+  });
+}
+
+/**
+ * Adds staking functionality
+ * 
+ * @param walletAddress - Address of the wallet
+ * @param network - Optional network override
+ * @returns Staking positions information
+ * @throws Error if staking not found or positions fetch fails
+ * 
+ * @example
+ * const positions = await getStakingPositions("0x123...abc");
+ * console.log(`Staking positions:`, positions);
+ */
+export async function getStakingPositions(
+  walletAddress: string,
+  network?: "MAINNET" | "TESTNET"
+): Promise<any> {
+  const aftermath = await initAftermath(network);
+  const staking = aftermath.Staking();
+  return staking.getStakingPositions({ walletAddress });
+}
+
+/**
+ * Adds DCA functionality
+ * 
+ * @param walletAddress - Address of the wallet
+ * @param network - Optional network override
+ * @returns DCA orders information
+ * @throws Error if DCA not found or orders fetch fails
+ * 
+ * @example
+ * const orders = await getDcaOrders("0x123...abc");
+ * console.log(`DCA orders:`, orders);
+ */
+export async function getDcaOrders(
+  walletAddress: string,
+  network?: "MAINNET" | "TESTNET"
+): Promise<any> {
+  const aftermath = await initAftermath(network);
+  const dca = aftermath.Dca();
+  return dca.getActiveDcaOrders({ walletAddress });
 } 
