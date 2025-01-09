@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import { getTokenPrice } from "../aftermath/AftermathClient";
-import { TokenPrice, PriceAlert } from "../common/types";
+import { TokenPrice, PriceAlert } from '../common/types';
 
 let monitorInstance: EventEmitter | null = null;
 let prices: Map<string, TokenPrice> = new Map();
@@ -10,6 +10,23 @@ let trackedTokens: Set<string> = new Set();
 
 /**
  * Initializes price monitoring for specified tokens
+ * 
+ * Creates an event emitter that broadcasts price updates and alerts.
+ * Only one monitor instance is maintained (singleton pattern).
+ * 
+ * @param tokenAddresses - Array of token addresses to monitor
+ * @param network - Optional network override ("MAINNET" | "TESTNET")
+ * @returns EventEmitter that emits 'priceUpdate' and 'error' events
+ * 
+ * @example
+ * const monitor = await initPriceMonitor([
+ *   "0x2::sui::SUI",
+ *   "0x...::coin::USDC"
+ * ]);
+ * 
+ * monitor.on('priceUpdate', ({token, price}) => {
+ *   console.log(`${token}: $${price.current}`);
+ * });
  */
 export async function initPriceMonitor(
   tokenAddresses: string[],
@@ -23,92 +40,108 @@ export async function initPriceMonitor(
   await updatePrices(network);
   
   // Update prices every 30 seconds
-  updateInterval = setInterval(() => {
-    updatePrices(network);
-  }, 30_000);
+  if (!updateInterval) {
+    updateInterval = setInterval(() => {
+      updatePrices(network).catch(error => {
+        if (monitorInstance) {
+          monitorInstance.emit('error', error);
+        }
+      });
+    }, 30000);
+  }
 
   return monitorInstance;
 }
 
 /**
- * Adds a new token to monitor
- */
-export async function addToken(
-  tokenAddress: string,
-  network?: "MAINNET" | "TESTNET"
-): Promise<void> {
-  trackedTokens.add(tokenAddress);
-  await updatePrices(network);
-}
-
-/**
- * Sets a price alert for a token
+ * Sets up a price alert for a specific token
+ * 
+ * Triggers callback when price crosses the specified threshold.
+ * 
+ * @param tokenAddr - Token address to monitor
+ * @param threshold - Price threshold to trigger alert
+ * @param isUpperBound - If true, alerts when price goes above threshold
+ * @param callback - Function to call when alert triggers
+ * 
+ * @example
+ * setPriceAlert(
+ *   "0x2::sui::SUI",
+ *   2.0,  // Alert when SUI > $2
+ *   true,
+ *   (price) => console.log(`SUI reached $${price}!`)
+ * );
  */
 export function setPriceAlert(
-  coinType: string,
+  tokenAddr: string,
   threshold: number,
   isUpperBound: boolean,
   callback: (price: number) => void
 ): void {
-  alerts.push({ coinType, threshold, isUpperBound, callback });
+  alerts.push({
+    coinType: tokenAddr,
+    threshold,
+    isUpperBound,
+    callback
+  });
 }
 
 /**
- * Gets current price for a token
+ * Calculates price volatility for a token
+ * 
+ * Volatility is measured as percentage change between current and previous price.
+ * 
+ * @param tokenAddr - Token address to check volatility
+ * @returns Volatility as a percentage, or undefined if insufficient data
+ * 
+ * @example
+ * const volatility = getVolatility("0x2::sui::SUI");
+ * if (volatility !== undefined) {
+ *   console.log(`SUI volatility: ${volatility}%`);
+ * }
  */
-export function getPrice(tokenAddress: string): TokenPrice | undefined {
-  return prices.get(tokenAddress);
-}
-
-/**
- * Gets price volatility for a token
- */
-export function getVolatility(tokenAddress: string): number | undefined {
-  const price = prices.get(tokenAddress);
+export function getVolatility(tokenAddr: string): number | undefined {
+  const price = prices.get(tokenAddr);
   if (!price || !price.previous) return undefined;
+  
   return ((price.current - price.previous) / price.previous) * 100;
 }
 
 /**
- * Gets all tracked prices
+ * Stops the price monitoring
+ * 
+ * Clears the update interval and resets the monitor state.
  */
-export function getAllPrices(): Map<string, TokenPrice> {
-  return new Map(prices);
-}
-
-/**
- * Stops price monitoring
- */
-export function stopMonitor(): void {
+export function stopPriceMonitor(): void {
   if (updateInterval) {
     clearInterval(updateInterval);
     updateInterval = null;
   }
+  prices.clear();
+  alerts = [];
+  trackedTokens.clear();
+  monitorInstance = null;
 }
 
-// Private helper functions
-
-async function updatePrices(network?: "MAINNET" | "TESTNET"): Promise<void> {
+/**
+ * Updates prices for all tracked tokens
+ * 
+ * Internal function that fetches new prices and emits updates.
+ */
+async function updatePrices(network: "MAINNET" | "TESTNET"): Promise<void> {
   try {
-    const tokens = Array.from(trackedTokens);
-    
-    for (const tokenAddr of tokens) {
-      const oldPrice = prices.get(tokenAddr);
+    for (const tokenAddr of trackedTokens) {
       const priceInfo = await getTokenPrice(tokenAddr, network);
+      const oldPrice = prices.get(tokenAddr);
       
-      const newPrice: TokenPrice = {
-        current: priceInfo.current,
-        previous: oldPrice?.current || priceInfo.current,
-        lastUpdated: Date.now(),
-        priceChange24h: priceInfo.priceChange24h
-      };
+      prices.set(tokenAddr, {
+        ...priceInfo,
+        previous: oldPrice?.current || priceInfo.current
+      });
 
-      prices.set(tokenAddr, newPrice);
-      
       if (monitorInstance) {
         monitorInstance.emit('priceUpdate', {
           token: tokenAddr,
-          price: newPrice
+          price: priceInfo
         });
       }
 
@@ -121,6 +154,11 @@ async function updatePrices(network?: "MAINNET" | "TESTNET"): Promise<void> {
   }
 }
 
+/**
+ * Checks if any price alerts should be triggered
+ * 
+ * Internal function that evaluates alert conditions.
+ */
 function checkPriceAlerts(tokenAddr: string, currentPrice: number): void {
   alerts.forEach(alert => {
     if (alert.coinType !== tokenAddr) return;
