@@ -1,4 +1,4 @@
-import { Pool as BaseAftermathPool } from 'aftermath-ts-sdk';
+import { Pool, ApiIndexerEventsBody, IndexerEventsWithCursor, PoolDepositEvent, PoolWithdrawEvent } from 'aftermath-ts-sdk';
 
 // Price related types
 export interface TokenPrice {
@@ -21,12 +21,12 @@ export interface PoolInfo extends ProcessedPool {
 }
 
 // Extend the base Pool type with our additional properties
-export interface AftermathPool extends BaseAftermathPool {
-  coinTypes?: string[];
-  reserves?: string[];  // Keep as string[] for raw data
-  fee?: number;
-  tvl?: number;
-  apy?: number;
+export interface AftermathPool {
+  getSpotPrice(params: { coinInType: string; coinOutType: string; withFees?: boolean }): number;
+  getTradeAmountOut(params: { coinInType: string; coinOutType: string; coinInAmount: bigint; referral?: boolean }): bigint;
+  getTradeAmountIn(params: { coinInType: string; coinOutType: string; coinOutAmount: bigint; referral?: boolean }): bigint;
+  getDepositEvents(inputs: ApiIndexerEventsBody): Promise<IndexerEventsWithCursor<PoolDepositEvent>>;
+  getWithdrawEvents(inputs: ApiIndexerEventsBody): Promise<IndexerEventsWithCursor<PoolWithdrawEvent>>;
 }
 
 // Separate interface for processed pool data
@@ -94,5 +94,21 @@ export interface TransactionDefaults {
   slippage: number;
   gasBudget: number;
   referralFee: number;
+}
+
+// Add SDK type definitions
+interface CoinPriceInfo {
+  price: number;
+  priceChange24HoursPercentage: number;
+}
+
+interface CoinsToPriceInfo {
+  [key: string]: CoinPriceInfo;
+}
+
+interface SpotPriceParams {
+  coinInType: string;
+  coinOutType: string;
+  withFees?: boolean;
 }
 

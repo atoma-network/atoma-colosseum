@@ -1,63 +1,6 @@
 import { Aftermath } from 'aftermath-ts-sdk';
 import { TokenPrice, PoolInfo } from '../common/types';
-
-// Add SDK type definitions
-interface CoinPriceInfo {
-  price: number;
-  priceChange24HoursPercentage: number;
-}
-
-interface CoinsToPriceInfo {
-  [key: string]: CoinPriceInfo;
-}
-
-interface SpotPriceParams {
-  coinInType: string;
-  coinOutType: string;
-  withFees?: boolean;
-}
-
-interface AftermathPool {
-  getSpotPrice(params: SpotPriceParams): number;
-  getTradeAmountOut(params: {
-    coinInType: string;
-    coinOutType: string;
-    coinInAmount: bigint;
-    referral?: boolean;
-  }): bigint;
-  getTradeAmountIn(params: {
-    coinInType: string;
-    coinOutType: string;
-    coinOutAmount: bigint;
-    referral?: boolean;
-  }): bigint;
-  getDepositEvents(params: {
-    cursor?: { txDigest: string; eventSeq: string };
-    limit?: number;
-  }): Promise<{
-    events: Array<{
-      poolId: string;
-      depositor: string;
-      types: string[];
-      deposits: bigint[];
-      lpMinted: bigint;
-    }>;
-    nextCursor?: { txDigest: string; eventSeq: string };
-  }>;
-  getWithdrawEvents(params: {
-    cursor?: { txDigest: string; eventSeq: string };
-    limit?: number;
-  }): Promise<{
-    events: Array<{
-      poolId: string;
-      withdrawer: string;
-      types: string[];
-      withdrawn: bigint[];
-      lpBurned: bigint;
-    }>;
-    nextCursor?: { txDigest: string; eventSeq: string };
-  }>;
-}
+import { AftermathPool } from '../common/types';
 
 let aftermathInstance: Aftermath | null = null;
 
@@ -220,16 +163,28 @@ export async function getPoolsApi(network?: "MAINNET" | "TESTNET") {
 }
 
 /**
- * Adds batch price operations
+ * Gets price information for multiple coins from Aftermath Finance
  * 
- * @param coins - Array of token addresses
- * @param network - Optional network override
- * @returns Object containing token prices
- * @throws Error if batch price fetch fails
+ * Fetches current prices, 24h changes, and other metrics for a list of tokens.
+ * Converts the raw Aftermath price data into a standardized format.
+ * 
+ * @param coins - Array of token addresses (e.g., ["0x2::sui::SUI", "0x2::usdc::USDC"])
+ * @param network - Network to query ("MAINNET" | "TESTNET")
+ * @returns Object mapping coin addresses to price information:
+ *          {
+ *            "0x2::sui::SUI": {
+ *              current: 1.23,        // Current price in USD
+ *              previous: 1.20,       // Price 24h ago in USD
+ *              lastUpdated: 123...,  // Unix timestamp
+ *              priceChange24h: 2.5   // 24h change percentage
+ *            },
+ *            ...
+ *          }
+ * @throws Error if price fetch fails or invalid token addresses
  * 
  * @example
- * const prices = await getCoinsPriceInfo(["0x2::sui::SUI", "0x2::sui::SUI"]);
- * console.log(`Current price: $${prices["0x2::sui::SUI"].current}`);
+ * const prices = await getCoinsPriceInfo(["0x2::sui::SUI"]);
+ * console.log(`SUI price: $${prices["0x2::sui::SUI"].current}`);
  * console.log(`24h change: ${prices["0x2::sui::SUI"].priceChange24h}%`);
  */
 export async function getCoinsPriceInfo(
@@ -238,13 +193,20 @@ export async function getCoinsPriceInfo(
 ): Promise<{[key: string]: TokenPrice}> {
   const aftermath = await initAftermath(network);
   const prices = aftermath.Prices();
-  const priceInfo = await prices.getCoinsToPriceInfo({ coins });
   
-  // Convert CoinsToPriceInfo to our TokenPrice format
+  type RawPriceInfo = {
+    price: number;
+    priceChange24HoursPercentage: number;
+  };
+  
+  const priceInfo = await prices.getCoinsToPriceInfo({ coins }) as {
+    [key: string]: RawPriceInfo
+  };
+  
   return Object.entries(priceInfo).reduce((acc, [key, value]) => {
     acc[key] = {
       current: value.price,
-      previous: value.price, // Todo: We could calculate this from 24h change if needed
+      previous: value.price, // Todo: Calculate from 24h change
       lastUpdated: Date.now(),
       priceChange24h: value.priceChange24HoursPercentage
     };
