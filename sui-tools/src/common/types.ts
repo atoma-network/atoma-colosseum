@@ -15,8 +15,25 @@ export interface PriceAlert {
   callback: (price: number) => void;
 }
 
-// Pool related types
-export interface PoolInfo extends ProcessedPool {
+// Base interface for raw pool data
+export interface RawPoolInfo {
+  id: string;
+  tokens: string[];
+  coinTypes?: string[];
+  reserves: string[];
+  fee?: number;
+  tvl?: number;
+  apy?: number;
+}
+
+// Processed pool data with converted types
+export interface ProcessedPool extends Omit<RawPoolInfo, 'reserves'> {
+  reserves: bigint[];
+  fees: number;
+}
+
+// Final pool info type
+export interface PoolInfo extends RawPoolInfo {
   // Additional pool info properties if needed
 }
 
@@ -27,16 +44,6 @@ export interface AftermathPool {
   getTradeAmountIn(params: { coinInType: string; coinOutType: string; coinOutAmount: bigint; referral?: boolean }): bigint;
   getDepositEvents(inputs: ApiIndexerEventsBody): Promise<IndexerEventsWithCursor<PoolDepositEvent>>;
   getWithdrawEvents(inputs: ApiIndexerEventsBody): Promise<IndexerEventsWithCursor<PoolWithdrawEvent>>;
-}
-
-// Separate interface for processed pool data
-export interface ProcessedPool {
-  id: string;
-  tokens: string[];
-  reserves: bigint[];  // Converted to bigint[]
-  fees: number;
-  tvl?: number;
-  apy?: number;
 }
 
 export interface AftermathPoolStats {

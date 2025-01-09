@@ -68,7 +68,7 @@ function processPool(pool: any, poolId: string): PoolInfo {
     id: poolId,
     tokens: pool.coinTypes || [],
     reserves: (pool.reserves || []).map((r: string) => BigInt(r)),
-    fees: pool.fee || 0,
+    fee: pool.fee || 0,
     tvl: pool.tvl || 0,
     apy: pool.apy || 0
   };

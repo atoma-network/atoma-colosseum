@@ -151,10 +151,11 @@ export async function getLendingRate(
 ): Promise<number> {
   const pool = await getPool(poolId, network);
   if (!pool) throw new Error('Pool not found');
-
-  const borrowed = Number(pool.reserves[0]);
-  const totalSupply = Number(pool.reserves[1]);
-  const utilization = calculateUtilization(borrowed, totalSupply);
+  
+  const utilization = calculateUtilization(
+    Number(pool?.reserves?.[0] ?? 0),
+    Number(pool?.reserves?.[1] ?? 0)
+  );
 
   return calculateLendingRate(utilization, baseRate, multiplier);
 }
