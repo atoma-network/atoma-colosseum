@@ -8,7 +8,10 @@
     "transfer": "ts-node src/examples/transactionExample.ts",
     "rates": "ts-node src/examples/ratesExample.ts",
     "aftermath": "ts-node src/examples/aftermathClientExample.ts",
-    "wallet": "ts-node src/examples/walletExample.ts"
+    "wallet": "ts-node src/examples/walletExample.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "keywords": [],
   "author": "",
@@ -22,6 +25,28 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "@types/jest": "^29.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/tests"
+    ],
+    "testMatch": [
+      "**/*.test.ts"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.d.ts",
+      "!src/examples/**"
+    ],
+    "moduleDirectories": [
+      "node_modules",
+      "<rootDir>"
+    ]
   }
 }
