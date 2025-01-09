@@ -5,8 +5,8 @@ async function main() {
     // Initialize RatesManager
     const ratesManager = new RatesManager("MAINNET");
 
-    // Example pool ID (replace with a real pool ID from Aftermath)
-    const poolId = "pool123";
+    // Example pool ID 
+    const poolId = "0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78";
 
     // Fetch pool APY
     console.log('Fetching pool APY...');
