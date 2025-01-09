@@ -183,11 +183,26 @@ export class RatesManager {
    * });
    */
   async getPoolApy(poolId: string): Promise<number> {
-    const pool = await this.aftermath.getPool(poolId);
-    if (!pool?.apy) {
-      throw new Error('Could not fetch pool APY');
+    try {
+      const pool = await this.aftermath.getPool(poolId);
+      if (!pool) {
+        throw new Error(`Pool not found: ${poolId}`);
+      }
+      
+      // If APY is undefined, calculate it based on other metrics
+      if (pool.apy === undefined) {
+        const utilization = this.calculateUtilization(
+          Number(pool.reserves[0] || 0), 
+          Number(pool.reserves[1] || 0)
+        );
+        return this.calculateLendingRate(utilization);
+      }
+      
+      return pool.apy;
+    } catch (error: unknown) {
+      console.error('Error fetching pool APY:', error instanceof Error ? error.message : String(error));
+      throw new Error(`Failed to fetch pool APY: ${error instanceof Error ? error.message : String(error)}`);
     }
-    return pool.apy;
   }
 
   /**

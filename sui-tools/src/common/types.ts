@@ -1,4 +1,4 @@
-import { Pool as AftermathPool } from 'aftermath-ts-sdk';
+import { Pool as BaseAftermathPool } from 'aftermath-ts-sdk';
 
 // Price related types
 export interface TokenPrice {
@@ -16,19 +16,24 @@ export interface PriceAlert {
 }
 
 // Pool related types
-export interface PoolInfo {
-  id: string;
-  tokens: string[];
-  reserves: bigint[];
-  fees: number;
+export interface PoolInfo extends ProcessedPool {
+  // Additional pool info properties if needed
+}
+
+// Extend the base Pool type with our additional properties
+export interface AftermathPool extends BaseAftermathPool {
+  coinTypes?: string[];
+  reserves?: string[];  // Keep as string[] for raw data
+  fee?: number;
   tvl?: number;
   apy?: number;
 }
 
-export interface Pool extends AftermathPool {
+// Separate interface for processed pool data
+export interface ProcessedPool {
   id: string;
   tokens: string[];
-  reserves: bigint[];
+  reserves: bigint[];  // Converted to bigint[]
   fees: number;
   tvl?: number;
   apy?: number;

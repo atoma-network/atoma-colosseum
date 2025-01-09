@@ -45,22 +45,22 @@ export function initSuiClient(network: "MAINNET" | "TESTNET" = "MAINNET"): SuiCl
  * );
  */
 export async function buildTransferTx(
-  client: SuiClient,
-  from: string,
-  to: string,
+  client: any,
+  fromAddress: string,
+  toAddress: string,
   tokenType: string,
   amount: bigint
-): Promise<TransactionBlock> {
+): Promise<any> {
   const tx = new TransactionBlock();
   
   // Get coins owned by sender
   const coins = await client.getCoins({
-    owner: from,
+    owner: fromAddress,
     coinType: tokenType
   });
 
   if (coins.data.length === 0) {
-    throw new Error(`No ${tokenType} coins found for address ${from}`);
+    throw new Error(`No ${tokenType} coins found for address ${fromAddress}`);
   }
 
   // Select coin for transfer
@@ -68,7 +68,7 @@ export async function buildTransferTx(
   
   // Split and transfer
   const [splitCoin] = tx.splitCoins(coin, [tx.pure(amount)]);
-  tx.transferObjects([splitCoin], tx.pure(to));
+  tx.transferObjects([splitCoin], tx.pure(toAddress));
   
   return tx;
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "start": "ts-node src/examples/priceMonitorExample.ts",
     "transfer": "ts-node src/examples/transactionExample.ts",
-    "rates": "ts-node src/examples/ratesExample.ts"
+    "rates": "ts-node src/examples/ratesExample.ts",
+    "aftermath": "ts-node src/examples/aftermathClientExample.ts"
   },
   "keywords": [],
   "author": "",
