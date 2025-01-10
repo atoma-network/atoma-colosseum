@@ -1,53 +1,32 @@
-import { initPriceMonitor, setPriceAlert, getVolatility } from '../monitors/PriceMonitor';
-import { TOKEN_ADDRESSES } from '../common/config';
+import { initPriceMonitor } from '../monitors/PriceMonitor';
 
 async function main() {
-  try {
-    // Initialize price monitoring
-    const priceMonitor = await initPriceMonitor([
-      TOKEN_ADDRESSES.SUI,
-      TOKEN_ADDRESSES.USDC,
-      TOKEN_ADDRESSES.USDT,
-      TOKEN_ADDRESSES.WETH
-    ]);
+  // Initialize price monitor with token addresses
+  const monitor = initPriceMonitor(['0x2::sui::SUI']);
 
-    console.log('\nStarting price monitoring...');
+  // Set up price alerts
+  monitor.addAlert(
+    '0x2::sui::SUI',
+    2.0,  // Price threshold
+    true, // Upper bound
+    (price) => console.log(`SUI price exceeded $2.00! Current price: $${price}`)
+  );
 
-    // Set up price alerts
-    setPriceAlert(
-      TOKEN_ADDRESSES.SUI,
-      2.0, // Alert when SUI price goes above $2
-      true,
-      (price) => console.log(`🚨 Alert: SUI price reached $${price.toFixed(2)}`)
-    );
+  monitor.addAlert(
+    '0x2::sui::SUI',
+    1.0,   // Price threshold
+    false, // Lower bound
+    (price) => console.log(`SUI price dropped below $1.00! Current price: $${price}`)
+  );
 
-    // Listen for price updates
-    priceMonitor.on('priceUpdate', ({ token, price }) => {
-      const tokenSymbol = token === TOKEN_ADDRESSES.SUI ? "SUI" :
-                         token === TOKEN_ADDRESSES.USDC ? "USDC" :
-                         token === TOKEN_ADDRESSES.USDT ? "USDT" :
-                         token === TOKEN_ADDRESSES.WETH ? "WETH" :
-                         token.substring(0, 10) + "...";
+  // Start monitoring prices every 60 seconds
+  monitor.startMonitoring(60 * 1000);
 
-      console.log(`\n${tokenSymbol}:`);
-      console.log(`  Price: $${price.current.toFixed(4)}`);
-      console.log(`  24h Change: ${price.priceChange24h?.toFixed(2)}%`);
-
-      const volatility = getVolatility(token);
-      if (volatility !== undefined) {
-        console.log(`  Current Volatility: ${volatility.toFixed(2)}%`);
-      }
-    });
-
-    priceMonitor.on('error', (error) => {
-      console.error('❌ Price monitoring error:', error);
-    });
-
-    console.log('Press Ctrl+C to stop');
-
-  } catch (error) {
-    console.error('Failed to start price monitor:', error);
-  }
+  // Example cleanup after 5 minutes
+  setTimeout(() => {
+    monitor.stopMonitoring();
+    console.log('Stopped price monitoring');
+  }, 5 * 60 * 1000);
 }
 
 main().catch(console.error); 

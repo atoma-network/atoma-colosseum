@@ -119,3 +119,12 @@ interface SpotPriceParams {
   withFees?: boolean;
 }
 
+export interface PriceMonitor {
+  addAlert: (coinType: string, threshold: number, isUpperBound: boolean, callback: (price: number) => void) => PriceAlert;
+  removeAlert: (alert: PriceAlert) => void;
+  getAlerts: () => PriceAlert[];
+  checkAlerts: () => Promise<void>;
+  startMonitoring: (interval: number) => void;
+  stopMonitoring: () => void;
+}
+

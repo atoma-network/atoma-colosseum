@@ -63,15 +63,15 @@ export function calculateLendingRate(
  * Calculates the utilization ratio of a lending pool
  * 
  * @param borrowed - Total amount borrowed
- * @param totalSupply - Total supply in the pool
+ * @param supplied - Total supply in the pool
  * @returns The utilization ratio as a percentage
  */
 export function calculateUtilization(
   borrowed: number,
-  totalSupply: number
+  supplied: number
 ): number {
-  if (totalSupply === 0) throw new Error('Total supply cannot be zero');
-  return (borrowed / totalSupply) * 100;
+  if (supplied === 0) return 0;
+  return borrowed / supplied;
 }
 
 /**
