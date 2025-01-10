@@ -12,24 +12,26 @@ import {
 jest.mock('aftermath-ts-sdk', () => {
   class MockAftermath {
     init = jest.fn().mockResolvedValue(undefined);
+    
     Pools = jest.fn().mockReturnValue({
       getPool: jest.fn().mockResolvedValue({
+        id: 'test-pool-id',
         coinTypes: ['0x2::sui::SUI', '0x2::usdc::USDC'],
         reserves: ['1000000', '2000000'],
         fee: 0.003,
         tvl: 1000000,
         apy: 0.15
       }),
-      getAllPools: jest.fn().mockResolvedValue([
-        {
-          coinTypes: ['0x2::sui::SUI', '0x2::usdc::USDC'],
-          reserves: ['1000000', '2000000'],
-          fee: 0.003,
-          tvl: 1000000,
-          apy: 0.15
-        }
-      ])
+      getAllPools: jest.fn().mockResolvedValue([{
+        id: 'test-pool-id',
+        coinTypes: ['0x2::sui::SUI', '0x2::usdc::USDC'],
+        reserves: ['1000000', '2000000'],
+        fee: 0.003,
+        tvl: 1000000,
+        apy: 0.15
+      }])
     });
+    
     Prices = jest.fn().mockReturnValue({
       getCoinPriceInfo: jest.fn().mockResolvedValue({
         price: 1.5,
@@ -62,9 +64,9 @@ describe('AftermathClient Tests', () => {
     const poolId = 'test-pool-id';
     const poolInfo = await getPool(poolId, 'TESTNET');
     expect(poolInfo).toBeDefined();
-    expect(poolInfo!).toHaveProperty('id', poolId);
-    expect(poolInfo!.tokens).toBeInstanceOf(Array);
-    expect(poolInfo!.tokens.length).toBe(2);
+    if (!poolInfo) throw new Error('Pool not found');
+    expect(poolInfo.id).toBe(poolId);
+    expect(poolInfo.tokens).toHaveLength(2);
   });
 
   test('getAllPools retrieves all pools', async () => {

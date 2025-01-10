@@ -33,20 +33,7 @@
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "roots": [
-      "<rootDir>/tests"
-    ],
-    "testMatch": [
-      "**/*.test.ts"
-    ],
-    "collectCoverageFrom": [
-      "src/**/*.ts",
-      "!src/**/*.d.ts",
-      "!src/examples/**"
-    ],
-    "moduleDirectories": [
-      "node_modules",
-      "<rootDir>"
-    ]
+    "testMatch": ["**/tests/**/*.test.ts"],
+    "moduleFileExtensions": ["ts", "js"]
   }
 }
