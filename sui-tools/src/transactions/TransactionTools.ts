@@ -2,7 +2,6 @@ import { SuiClient, SuiHTTPTransport } from '@mysten/sui.js/client';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { NETWORK_CONFIG } from '../common/config';
 import { TokenBalance } from '../common/types';
-
 /**
  * Creates and initializes a Sui client for transaction operations
  * 
@@ -184,4 +183,159 @@ export async function executeTransaction(
     console.error('Transaction failed:', error);
     throw error;
   }
+}
+
+/**
+ * Creates a transaction to merge multiple coins of the same type
+ * 
+ * Combines multiple coin objects of the same type into a single coin.
+ * Useful for consolidating fragmented coin balances.
+ * 
+ * @param client - An initialized SuiClient
+ * @param coinType - Type of coins to merge (e.g., "0x2::sui::SUI")
+ * @param walletAddress - Address owning the coins
+ * @param maxCoins - Maximum number of coins to merge in one tx (default: 10)
+ * @returns TransactionBlock ready to be signed and executed
+ * @throws Error if no coins found or invalid coin type
+ * 
+ * @example
+ * const tx = await createMergeCoinsTx(client, "0x2::sui::SUI", "0x123...");
+ * const result = await executeTransaction(client, tx, signer);
+ */
+export async function createMergeCoinsTx(
+  client: SuiClient,
+  coinType: string,
+  walletAddress: string,
+  maxCoins: number = 10
+): Promise<TransactionBlock> {
+  const coins = await client.getCoins({
+    owner: walletAddress,
+    coinType
+  });
+
+  if (coins.data.length <= 1) {
+    throw new Error('Not enough coins to merge');
+  }
+
+  const tx = new TransactionBlock();
+  const coinsToMerge = coins.data.slice(0, maxCoins);
+  const primaryCoin = coinsToMerge[0].coinObjectId;
+  const mergeCoins = coinsToMerge.slice(1).map(coin => coin.coinObjectId);
+
+  tx.mergeCoins(primaryCoin, mergeCoins);
+  return tx;
+}
+
+/**
+ * Creates a programmable transaction block with common options
+ * 
+ * Initializes a new PTB with gas budget and other common settings.
+ * Provides a foundation for building complex transactions.
+ * 
+ * @param gasBudget - Maximum gas to spend (in MIST)
+ * @returns Initialized TransactionBlock
+ * 
+ * @example
+ * const ptb = createPTB(2000000);
+ * ptb.moveCall({...});
+ * const result = await executeTransaction(client, ptb, signer);
+ */
+export function createPTB(
+  gasBudget: number = 2000000
+): TransactionBlock {
+  const tx = new TransactionBlock();
+  tx.setGasBudget(gasBudget);
+  return tx;
+}
+
+/**
+ * Move function target format: `package::module::function`
+ */
+type MoveTarget = `${string}::${string}::${string}`;
+
+/**
+ * Adds a move call to an existing transaction block
+ * 
+ * Helper function to add a move call with proper typing and validation.
+ * 
+ * @param tx - Existing transaction block
+ * @param target - Move function to call (e.g., "0x2::sui::pay")
+ * @param typeArguments - Type arguments for generic functions
+ * @param args - Arguments for the function call
+ * @returns The transaction block for chaining
+ * 
+ * @example
+ * const ptb = createPTB();
+ * addMoveCall(ptb, "0x2::sui::pay", [], [recipient, amount]);
+ */
+export function addMoveCall(
+  tx: TransactionBlock,
+  target: MoveTarget,
+  typeArguments: string[] = [],
+  args: any[] = []
+): TransactionBlock {
+  tx.moveCall({
+    target,
+    typeArguments,
+    arguments: args
+  });
+  return tx;
+}
+
+/**
+ * Creates a sponsored transaction block
+ * 
+ * Builds a transaction that can be sponsored by another account.
+ * Useful for gas abstraction where a different account pays for gas.
+ * 
+ * @param tx - The transaction block to sponsor
+ * @param sender - Address of the transaction sender
+ * @param sponsor - Address of the gas sponsor
+ * @param sponsorCoins - Coins owned by sponsor to use for gas
+ * @returns Transaction block ready for sponsor signature
+ * 
+ * @example
+ * const tx = createPTB();
+ * const sponsoredTx = await createSponsoredTx(tx, userAddr, sponsorAddr, sponsorCoins);
+ */
+export async function createSponsoredTx(
+  tx: TransactionBlock,
+  sender: string,
+  sponsor: string,
+  sponsorCoins: { objectId: string; version: string; digest: string }[]
+): Promise<TransactionBlock> {
+  const kindBytes = await tx.build({ onlyTransactionKind: true });
+  const sponsoredTx = TransactionBlock.fromKind(kindBytes);
+  
+  sponsoredTx.setSender(sender);
+  sponsoredTx.setGasOwner(sponsor);
+  sponsoredTx.setGasPayment(sponsorCoins);
+  
+  return sponsoredTx;
+}
+
+/**
+ * Creates a vector of objects for move calls
+ * 
+ * Helper function to construct a vector of objects that can be 
+ * passed into Move calls.
+ * 
+ * @param tx - Transaction block to add vector to
+ * @param elements - Array of objects/values to include
+ * @param type - Optional type annotation for the vector
+ * @returns The move vector input
+ * 
+ * @example
+ * const vec = createMoveVec(tx, [coin1, coin2]);
+ * tx.moveCall({ target: "0x2::coin::join_vec", arguments: [vec] });
+ */
+export function createMoveVec(
+  tx: TransactionBlock,
+  elements: any[],
+  type?: string
+) {
+  return tx.makeMoveVec({
+    objects: elements,
+    type
+  });
 } 
