@@ -21,6 +21,8 @@ const WITHDRAW_FUNDS_FROM_TREASURY_POOL_FUNCTION_NAME: &str = "withdraw_funds_fr
 /// The result type for the Sui client
 type Result<T> = std::result::Result<T, SuiClientError>;
 
+/// The context for the Sui client to interact with the
+/// GuessAI game smart contract, on the Sui blockchain.
 pub struct SuiClientContext {
     /// The ID of the Secret Guessing database object
     secret_guessing_db: ObjectID,
@@ -46,20 +48,42 @@ impl SuiClientContext {
         }
     }
 
+    /// Withdraws funds from the treasury pool and transfers them to the specified winner address.
+    ///
+    /// This method executes a Move call to withdraw funds from the Secret Guessing game's treasury pool
+    /// and transfer them to the winning player's address.
+    ///
+    /// # Arguments
+    ///
+    /// * `winner_address` - The Sui address of the winning player who will receive the funds
+    /// * `gas` - Optional ObjectID to use for gas payment. If None, the system will select an appropriate gas object
+    /// * `gas_budget` - Optional gas budget for the transaction. Defaults to 50,000,000 (0.05 SUI) if None
+    /// * `gas_price` - Optional gas price for the transaction. If None, the system will use the network's reference price
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result<String>` containing the transaction digest if successful, or a `SuiClientError` if the operation fails
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The wallet context fails to get the active address
+    /// * The object ID parsing fails
+    /// * The transaction execution fails
     #[instrument(
-    level = "info"
-    skip_all,
-    fields(
-        winner_address = %winner_address,
-    )
-)]
+        level = "info"
+        skip_all,
+        fields(
+            winner_address = %winner_address,
+        )
+    )]
     pub async fn withdraw_funds_from_treasury_pool(
         &mut self,
         winner_address: SuiAddress,
         gas: Option<ObjectID>,
         gas_budget: Option<u64>,
         gas_price: Option<u64>,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let client = self.wallet_context.get_client().await?;
         let active_address = self.wallet_context.active_address()?;
 
@@ -83,7 +107,26 @@ impl SuiClientContext {
             )
             .await?;
 
-        Ok(())
+        info!(
+            target = "sui-client-withdraw-funds-from-treasury-pool",
+            tx_hash = %tx.digest(),
+            winner_address = %winner_address,
+            "Withdrew funds from treasury pool for winner"
+        );
+
+        let tx = self.wallet_context.sign_transaction(&tx);
+        let response = self
+            .wallet_context
+            .execute_transaction_must_succeed(tx)
+            .await;
+
+        info!(
+            target = "sui-client-withdraw-funds-from-treasury-pool",
+            tx_hash = %response.digest,
+            "Successfully withdrew funds from treasury pool for winner"
+        );
+
+        Ok(response.digest.to_string())
     }
 }
 

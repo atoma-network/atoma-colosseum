@@ -1210,7 +1210,7 @@ name = "consensus-config"
 version = "0.1.0"
 source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b4e67e5d09e8ce1b3dd87e2338218"
 dependencies = [
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "mysten-network",
  "rand",
  "serde",
@@ -1413,6 +1413,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0369ee1ad671834580515889b80f2ea915f23b8be8d0daa4bbaf2ac5c7590835"
 dependencies = [
  "cipher",
+]
+
+[[package]]
+name = "curve25519-dalek"
+version = "4.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "curve25519-dalek-derive",
+ "fiat-crypto",
+ "rustc_version",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
+name = "curve25519-dalek-derive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
+dependencies = [
+ "proc-macro2 1.0.92",
+ "quote 1.0.38",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -1956,7 +1982,58 @@ dependencies = [
  "ecdsa 0.16.9",
  "ed25519-consensus",
  "elliptic-curve 0.13.8",
- "fastcrypto-derive",
+ "fastcrypto-derive 0.1.3 (git+https://github.com/MystenLabs/fastcrypto?rev=69d496c71fb37e3d22fe85e5bbfd4256d61422b9)",
+ "generic-array",
+ "hex",
+ "hex-literal",
+ "hkdf",
+ "lazy_static",
+ "num-bigint 0.4.6",
+ "once_cell",
+ "p256",
+ "rand",
+ "readonly",
+ "rfc6979 0.4.0",
+ "rsa",
+ "schemars",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha2 0.10.8",
+ "sha3",
+ "signature 2.2.0",
+ "static_assertions",
+ "thiserror 1.0.69",
+ "tokio",
+ "typenum",
+ "zeroize",
+]
+
+[[package]]
+name = "fastcrypto"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e06674cac3bf7ec9a951971285e6051a45273dc4e265cca27c02a0d4ebcb46f8"
+dependencies = [
+ "ark-ec",
+ "ark-ff",
+ "ark-secp256r1",
+ "ark-serialize",
+ "auto_ops",
+ "base64ct",
+ "bech32",
+ "bincode",
+ "blake2",
+ "blst",
+ "bs58 0.4.0",
+ "curve25519-dalek-ng",
+ "derive_more 0.99.18",
+ "digest 0.10.7",
+ "ecdsa 0.16.9",
+ "ed25519-consensus",
+ "elliptic-curve 0.13.8",
+ "fastcrypto-derive 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "generic-array",
  "hex",
  "hex-literal",
@@ -1987,6 +2064,18 @@ dependencies = [
 [[package]]
 name = "fastcrypto-derive"
 version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c0c2af2157f416cb885e11d36cd0de2753f6d5384752d364075c835f5f8f891"
+dependencies = [
+ "convert_case 0.6.0",
+ "proc-macro2 1.0.92",
+ "quote 1.0.38",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "fastcrypto-derive"
+version = "0.1.3"
 source = "git+https://github.com/MystenLabs/fastcrypto?rev=69d496c71fb37e3d22fe85e5bbfd4256d61422b9#69d496c71fb37e3d22fe85e5bbfd4256d61422b9"
 dependencies = [
  "quote 1.0.38",
@@ -2000,7 +2089,7 @@ source = "git+https://github.com/MystenLabs/fastcrypto?rev=69d496c71fb37e3d22fe8
 dependencies = [
  "bcs",
  "digest 0.10.7",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "hex",
  "itertools 0.10.5",
  "rand",
@@ -2027,7 +2116,7 @@ dependencies = [
  "bcs",
  "byte-slice-cast",
  "derive_more 0.99.18",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "ff 0.13.0",
  "im",
  "itertools 0.12.1",
@@ -2087,6 +2176,12 @@ dependencies = [
  "quote 1.0.38",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "fiat-crypto"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
 name = "fixed-hash"
@@ -3762,7 +3857,7 @@ version = "0.1.0"
 source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b4e67e5d09e8ce1b3dd87e2338218"
 dependencies = [
  "anyhow",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "futures",
  "mysten-metrics",
  "parking_lot",
@@ -3832,7 +3927,7 @@ source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b
 dependencies = [
  "cfg-if",
  "ed25519-consensus",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "fastcrypto-tbls",
  "hashbrown 0.12.3",
  "impl-trait-for-tuples",
@@ -3859,7 +3954,7 @@ name = "narwhal-config"
 version = "0.1.0"
 source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b4e67e5d09e8ce1b3dd87e2338218"
 dependencies = [
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "match_opt",
  "mysten-network",
  "mysten-util-mem",
@@ -3877,7 +3972,7 @@ version = "0.1.0"
 source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b4e67e5d09e8ce1b3dd87e2338218"
 dependencies = [
  "bcs",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "serde",
  "shared-crypto",
 ]
@@ -5446,16 +5541,24 @@ dependencies = [
 name = "secret-guessing"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
+ "base64 0.22.1",
+ "blake2",
+ "fastcrypto 0.1.9",
+ "hkdf",
+ "rand",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.10.8",
  "sui-keys",
  "sui-sdk",
  "thiserror 2.0.9",
  "tokio",
  "toml 0.8.19",
  "tracing",
+ "x25519-dalek",
 ]
 
 [[package]]
@@ -5733,7 +5836,7 @@ source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b
 dependencies = [
  "bcs",
  "eyre",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "serde",
  "serde_repr",
 ]
@@ -6007,7 +6110,7 @@ dependencies = [
  "consensus-config",
  "csv",
  "dirs",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "move-vm-config",
  "mysten-common",
  "narwhal-config",
@@ -6041,7 +6144,7 @@ source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b
 dependencies = [
  "anyhow",
  "bcs",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "move-binary-format",
  "move-bytecode-utils",
  "move-core-types",
@@ -6057,7 +6160,7 @@ version = "0.0.0"
 source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b4e67e5d09e8ce1b3dd87e2338218"
 dependencies = [
  "anyhow",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "jsonrpsee",
  "mysten-metrics",
  "once_cell",
@@ -6080,7 +6183,7 @@ dependencies = [
  "bcs",
  "colored",
  "enum_dispatch",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "itertools 0.13.0",
  "json_to_table",
  "move-binary-format",
@@ -6108,7 +6211,7 @@ source = "git+https://github.com/mystenlabs/sui?tag=testnet-v1.39.3#5d4350d66d2b
 dependencies = [
  "anyhow",
  "bip32",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "rand",
  "regex",
  "serde",
@@ -6224,7 +6327,7 @@ dependencies = [
  "bcs",
  "bytes",
  "documented",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "http 1.2.0",
  "itertools 0.13.0",
  "mime",
@@ -6265,7 +6368,7 @@ dependencies = [
  "bcs",
  "clap",
  "colored",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "futures",
  "futures-core",
  "jsonrpsee",
@@ -6317,7 +6420,7 @@ dependencies = [
  "axum",
  "axum-server",
  "ed25519",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "pkcs8 0.9.0",
  "rcgen",
  "reqwest",
@@ -6363,7 +6466,7 @@ dependencies = [
  "derive_more 1.0.0",
  "enum_dispatch",
  "eyre",
- "fastcrypto",
+ "fastcrypto 0.1.8",
  "fastcrypto-tbls",
  "fastcrypto-zkp",
  "im",
@@ -7591,6 +7694,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05f360fc0b24296329c78fda852a1e9ae82de9cf7b27dae4b7f62f118f77b9ed"
 dependencies = [
  "tap",
+]
+
+[[package]]
+name = "x25519-dalek"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7e468321c81fb07fa7f4c636c3972b9100f0346e5b6a9f2bd0603a52f7ed277"
+dependencies = [
+ "curve25519-dalek",
+ "rand_core",
+ "serde",
+ "zeroize",
 ]
 
 [[package]]

@@ -1,8 +1,11 @@
 use crate::{
-    config::SecretGuessingConfig, types::ChatCompletionResponse, SECRET_GUESSING_MODULE_NAME,
+    atoma::{self, AtomaSdk},
+    client::{SuiClientContext, SuiClientError},
+    config::SecretGuessingConfig,
+    SECRET_GUESSING_MODULE_NAME,
 };
 use events::{NewGuessEvent, SecretGuessingEvent, SecretGuessingEventIdentifier};
-use prompts::GuessPromptResponse;
+use prompts::{GuessPromptResponse, SecretPromptResponse};
 use serde_json::json;
 use std::{str::FromStr, time::Duration};
 use sui_sdk::{
@@ -16,6 +19,7 @@ use sui_sdk::{
 use thiserror::Error;
 use tokio::sync::watch::Receiver;
 use tracing::{error, info, instrument, trace};
+use x25519_dalek::StaticSecret;
 
 /// The Atoma API URL, for confidential chat completions
 const ATOMA_API_URL: &str = "https://api.atomacloud.cloud/v1/confidential/chat/completions";
@@ -30,6 +34,12 @@ pub(crate) type Result<T> = std::result::Result<T, SuiEventSubscriberError>;
 /// This struct provides functionality to subscribe to and process events
 /// from the Sui blockchain based on specified filters.
 pub struct SuiEventSubscriber {
+    /// The Atoma SDK instance
+    pub atoma_sdk: AtomaSdk,
+
+    /// The client private key
+    pub client_private_key: StaticSecret,
+
     /// Configuration settings for the Secret Guessing application
     pub config: SecretGuessingConfig,
 
@@ -40,24 +50,52 @@ pub struct SuiEventSubscriber {
     /// The secret phrase or word that players are trying to guess
     pub secret: String,
 
+    /// The Sui client context for the current Secret Guessing game
+    pub sui_client_ctx: SuiClientContext,
+
     /// Channel receiver for shutdown signals to gracefully stop the subscriber
     pub shutdown_signal: Receiver<bool>,
 }
 
 impl SuiEventSubscriber {
     /// Constructor
-    pub async fn new(config: SecretGuessingConfig, shutdown_signal: Receiver<bool>) -> Self {
+    pub async fn new(
+        atoma_sdk: AtomaSdk,
+        client_private_key: StaticSecret,
+        config: SecretGuessingConfig,
+        sui_client_ctx: SuiClientContext,
+        shutdown_signal: Receiver<bool>,
+    ) -> Result<Self> {
         let filter = EventFilter::MoveModule {
             package: ObjectID::from_str(&config.package_id).unwrap(),
             module: Identifier::new(SECRET_GUESSING_MODULE_NAME).unwrap(),
         };
 
-        Self {
+        let secret_prompt = prompts::create_secret_prompt();
+        let chat_completions_request = serde_json::from_value(json!({
+            "model": config.model.clone(),
+            "messages": [
+                {"role": "system", "content": secret_prompt},
+            ],
+        }))?;
+
+        let response_body = atoma_sdk
+            .confidential_chat_completions(&client_private_key, chat_completions_request)
+            .await?;
+
+        let secret = serde_json::from_str::<SecretPromptResponse>(
+            &response_body.choices[0].message.content.clone(),
+        )?;
+
+        Ok(Self {
+            atoma_sdk,
+            client_private_key,
             config,
             filter,
-            secret,
+            secret: secret.secret,
+            sui_client_ctx,
             shutdown_signal,
-        }
+        })
     }
 
     /// Builds a SuiClient based on the provided configuration.
@@ -154,9 +192,8 @@ impl SuiEventSubscriber {
     ))]
     async fn handle_new_guess_event(
         &mut self,
-        client: &SuiClient,
         event: NewGuessEvent,
-        sender: ObjectID,
+        sender: SuiAddress,
     ) -> Result<()> {
         info!(
             target = "sui_event_subscriber",
@@ -172,26 +209,21 @@ impl SuiEventSubscriber {
         } = event;
 
         // TODO: Check if the guess is correct
-        let client = reqwest::Client::new();
         let (system_prompt, user_prompt) = prompts::check_guess_prompt(&guess, &self.secret);
-        let response = client
-            .post(ATOMA_API_URL)
-            .json(&json!({
-                "model": self.config.model,
-                "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-                "max_tokens": 100
-            }))
-            .bearer_auth(&self.config.atoma_api_key)
-            .send()
+        let response_body = self
+            .atoma_sdk
+            .confidential_chat_completions(
+                &self.client_private_key,
+                serde_json::from_value(json!({
+                    "model": self.config.model.clone(),
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                }))?,
+            )
             .await?;
 
-        if !response.status().is_success() {
-            return Err(SuiEventSubscriberError::AtomaApiError(
-                response.error_for_status().unwrap_err(),
-            ));
-        }
-
-        let response_body: ChatCompletionResponse = serde_json::from_value(response.json().await?)?;
         let answer = serde_json::from_str::<GuessPromptResponse>(
             &response_body.choices[0].message.content.clone(),
         )?;
@@ -203,7 +235,16 @@ impl SuiEventSubscriber {
                 "Guess is correct for sender: {sender}, guess: {guess}, fee: {fee}, guess_count: {guess_count}, treasury_pool_balance: {treasury_pool_balance}"
             );
 
-            let sui_client = Self::build_client(&self.config).await?;
+            let tx_hash = self
+                .sui_client_ctx
+                .withdraw_funds_from_treasury_pool(sender, None, None, None)
+                .await?;
+
+            todo!("Add a client for social media to post the tx_hash and sender of the winner");
+        }
+
+        if guess_count % self.config.hint_wait_count == 0 {
+            todo!("Add a client for social media to post the tx_hash and sender of the winner");
         }
 
         Ok(())
@@ -266,7 +307,13 @@ impl SuiEventSubscriber {
                                             continue;
                                         }
                                     };
-                                    self.handle_event(event, sender).await?;
+                                    if let Err(e) = self.handle_event(event, sender).await {
+                                        error!(
+                                            target = "atoma-sui-subscriber",
+                                            event = "subscriber-event-handle-error",
+                                            "Failed to handle event: {e}"
+                                        );
+                                    }
                                 }
                                 Err(e) => {
                                     error!(
@@ -326,6 +373,8 @@ impl SuiEventSubscriber {
 
 #[derive(Debug, Error)]
 pub enum SuiEventSubscriberError {
+    #[error("Atoma SDK error: {0}")]
+    AtomaSdkError(#[from] atoma::AtomaSdkError),
     #[error("Failed to read events: {0}")]
     ReadEventsError(#[from] sui_sdk::error::Error),
     #[error("Failed to deserialize event: {0}")]
@@ -342,6 +391,8 @@ pub enum SuiEventSubscriberError {
     InvalidEvent(serde_json::Value),
     #[error("Failed to send request to Atoma API: {0}")]
     AtomaApiError(#[from] reqwest::Error),
+    #[error("Sui client error: {0}")]
+    SuiClientError(#[from] SuiClientError),
 }
 
 pub(crate) mod events {
@@ -450,7 +501,6 @@ pub(crate) mod events {
             SecretGuessingEventIdentifier::TDXQuoteResubmittedEvent => Ok(
                 SecretGuessingEvent::TDXQuoteResubmittedEvent(serde_json::from_value(value)?),
             ),
-            _ => Err(SuiEventSubscriberError::InvalidEvent(value)),
         }
     }
 
@@ -640,6 +690,15 @@ pub(crate) mod prompts {
         pub(crate) explanation: String,
     }
 
+    /// Response structure for the secret creation prompt.
+    ///
+    /// This struct represents the parsed response from the AI model when creating a secret.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(crate) struct SecretPromptResponse {
+        /// The created secret
+        pub(crate) secret: String,
+    }
+
     /// Creates system and user prompts for checking if a guess matches a secret.
     ///
     /// This function generates two prompts used to query an AI model to determine if a guess
@@ -690,5 +749,13 @@ pub(crate) mod prompts {
         let user_prompt =
             format!("The guess is: {guess}\nThe secret is: {secret}\nIs the guess correct?");
         (system_prompt, user_prompt)
+    }
+
+    pub(crate) fn create_secret_prompt() -> String {
+        todo!()
+    }
+
+    pub(crate) fn interact_with_social_media_prompt() -> String {
+        todo!()
     }
 }
