@@ -109,21 +109,25 @@ async function getPriceInfo(query: string) {
 
     // Format the final answer using the results
     let finalAnswer = aiResponse.final_answer;
-    results.forEach(({ result }) => {
-      if (result) {
-        // Replace placeholders with actual values
-        finalAnswer = finalAnswer.replace(
-          /\${([^}]+)}/g,
-          (match: string, p1: string) => {
-            try {
-              return eval(`result.${p1}`) || match;
-            } catch {
-              return match;
+    if (results.length > 0 && results[0].result) {
+      const priceData = results[0].result as any;
+      finalAnswer = finalAnswer.replace(
+        /\${([^}]+)}/g,
+        (match: string, p1: string) => {
+          try {
+            // Handle nested paths like "output.current"
+            const path = p1.split(".");
+            let value = priceData;
+            for (const key of path) {
+              value = value[key];
             }
+            return value?.toString() || match;
+          } catch {
+            return match;
           }
-        );
-      }
-    });
+        }
+      );
+    }
 
     return {
       status: "success",
