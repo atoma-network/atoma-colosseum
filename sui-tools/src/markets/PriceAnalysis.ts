@@ -1,8 +1,13 @@
-import { EventEmitter } from 'events';
-import type { PriceAlert, PriceMonitor, TokenPrice } from '../common/types';
 
 import { Aftermath } from 'aftermath-ts-sdk';
-import {PoolInfo } from '../common/types';
+import {PoolInfo, TokenPrice } from '../common/types';
+
+
+/** --------------------------------------------------------------------------
+ *                            Initialization
+ * 
+ * --------------------------------------------------------------------------
+ */
 
 let aftermathInstance: Aftermath | null = null;
 
@@ -29,6 +34,44 @@ export async function initAftermath(
   }
   return aftermathInstance;
 }
+
+/**
+ * Gets the Prices API instance
+ * 
+ * @param network - Optional network override
+ * @returns The Prices API instance
+ * 
+ * @example
+ * const pricesApi = await getPricesApi();
+ * const info = await pricesApi.getCoinPriceInfo({ coin: "0x2::sui::SUI" });
+ */
+export async function getPricesApi(network?: "MAINNET" | "TESTNET") {
+  const aftermath = await initAftermath(network);
+  return aftermath.Prices();
+}
+
+/**
+ * Gets the Pools API instance
+ * 
+ * @param network - Optional network override
+ * @returns The Pools API instance
+ * 
+ * @example
+ * const poolsApi = await getPoolsApi();
+ * const info = await poolsApi.getPool({ objectId: "pool_123" });
+ */
+export async function getPoolsApi(network?: "MAINNET" | "TESTNET") {
+  const aftermath = await initAftermath(network);
+  return aftermath.Pools();
+}
+
+/** --------------------------------------------------------------------------
+ *                            Price Operations
+ * 
+ *           These are the basic building blocks for price operations
+ * 
+ * --------------------------------------------------------------------------
+ */
 
 
 
@@ -64,8 +107,78 @@ export async function getTokenPrice(
   };
 }
 
+
+/**
+ * Gets price information for multiple coins from Aftermath Finance
+ * 
+ * Fetches current prices, 24h changes, and other metrics for a list of tokens.
+ * Converts the raw Aftermath price data into a standardized format.
+ * 
+ * @param coins - Array of token addresses (e.g., ["0x2::sui::SUI", "0x2::usdc::USDC"])
+ * @param network - Network to query ("MAINNET" | "TESTNET")
+ * @returns Object mapping coin addresses to price information:
+ *          {
+ *            "0x2::sui::SUI": {
+ *              current: 1.23,        // Current price in USD
+ *              previous: 1.20,       // Price 24h ago in USD
+ *              lastUpdated: 123...,  // Unix timestamp
+ *              priceChange24h: 2.5   // 24h change percentage
+ *            },
+ *            ...
+ *          }
+ * @throws Error if price fetch fails or invalid token addresses
+ * 
+ * @example
+ * const prices = await getCoinsPriceInfo(["0x2::sui::SUI"]);
+ * console.log(`SUI price: $${prices["0x2::sui::SUI"].current}`);
+ * console.log(`24h change: ${prices["0x2::sui::SUI"].priceChange24h}%`);
+ */
+export async function getCoinsPriceInfo(
+  coins: string[],
+  network?: "MAINNET" | "TESTNET"
+): Promise<{[key: string]: TokenPrice}> {
+  const aftermath = await initAftermath(network);
+  const prices = aftermath.Prices();
+  
+  type RawPriceInfo = {
+    price: number;
+    priceChange24HoursPercentage: number;
+  };
+  
+  const priceInfo = await prices.getCoinsToPriceInfo({ coins }) as {
+    [key: string]: RawPriceInfo
+  };
+  
+  return Object.entries(priceInfo).reduce((acc, [key, value]) => {
+    acc[key] = {
+      current: value.price,
+      previous: value.price, // Todo: Calculate from 24h change
+      lastUpdated: Date.now(),
+      priceChange24h: value.priceChange24HoursPercentage
+    };
+    return acc;
+  }, {} as {[key: string]: TokenPrice});
+}
+
+
+
+/** --------------------------------------------------------------------------
+ *                            Pool and Trade Operations
+ * 
+ * --------------------------------------------------------------------------
+ */
+
 /**
  * Converts raw pool data to our standardized format
+ * 
+ * @param pool - Raw pool data from Aftermath
+ * @param poolId - Unique identifier of the pool
+ * @returns Processed pool information
+ * 
+ * @example
+ * const pool = await getPool("0x123...abc");
+ * console.log(`Pool TVL: $${pool.tvl}`);
+ * console.log(`Pool APY: ${pool.apy}%`);
  */
 function processPool(pool: any, poolId: string): PoolInfo {
   return {
@@ -134,88 +247,6 @@ export async function getAllPools(
   const allPools = await pools.getAllPools();
   
   return allPools.map((pool, index) => processPool(pool, `pool-${index}`));
-}
-
-/**
- * Gets the Prices API instance
- * 
- * @param network - Optional network override
- * @returns The Prices API instance
- * 
- * @example
- * const pricesApi = await getPricesApi();
- * const info = await pricesApi.getCoinPriceInfo({ coin: "0x2::sui::SUI" });
- */
-export async function getPricesApi(network?: "MAINNET" | "TESTNET") {
-  const aftermath = await initAftermath(network);
-  return aftermath.Prices();
-}
-
-/**
- * Gets the Pools API instance
- * 
- * @param network - Optional network override
- * @returns The Pools API instance
- * 
- * @example
- * const poolsApi = await getPoolsApi();
- * const info = await poolsApi.getPool({ objectId: "pool_123" });
- */
-export async function getPoolsApi(network?: "MAINNET" | "TESTNET") {
-  const aftermath = await initAftermath(network);
-  return aftermath.Pools();
-}
-
-/**
- * Gets price information for multiple coins from Aftermath Finance
- * 
- * Fetches current prices, 24h changes, and other metrics for a list of tokens.
- * Converts the raw Aftermath price data into a standardized format.
- * 
- * @param coins - Array of token addresses (e.g., ["0x2::sui::SUI", "0x2::usdc::USDC"])
- * @param network - Network to query ("MAINNET" | "TESTNET")
- * @returns Object mapping coin addresses to price information:
- *          {
- *            "0x2::sui::SUI": {
- *              current: 1.23,        // Current price in USD
- *              previous: 1.20,       // Price 24h ago in USD
- *              lastUpdated: 123...,  // Unix timestamp
- *              priceChange24h: 2.5   // 24h change percentage
- *            },
- *            ...
- *          }
- * @throws Error if price fetch fails or invalid token addresses
- * 
- * @example
- * const prices = await getCoinsPriceInfo(["0x2::sui::SUI"]);
- * console.log(`SUI price: $${prices["0x2::sui::SUI"].current}`);
- * console.log(`24h change: ${prices["0x2::sui::SUI"].priceChange24h}%`);
- */
-export async function getCoinsPriceInfo(
-  coins: string[],
-  network?: "MAINNET" | "TESTNET"
-): Promise<{[key: string]: TokenPrice}> {
-  const aftermath = await initAftermath(network);
-  const prices = aftermath.Prices();
-  
-  type RawPriceInfo = {
-    price: number;
-    priceChange24HoursPercentage: number;
-  };
-  
-  const priceInfo = await prices.getCoinsToPriceInfo({ coins }) as {
-    [key: string]: RawPriceInfo
-  };
-  
-  return Object.entries(priceInfo).reduce((acc, [key, value]) => {
-    acc[key] = {
-      current: value.price,
-      previous: value.price, // Todo: Calculate from 24h change
-      lastUpdated: Date.now(),
-      priceChange24h: value.priceChange24HoursPercentage
-    };
-    return acc;
-  }, {} as {[key: string]: TokenPrice});
 }
 
 /**
