@@ -4,11 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node src/examples/priceMonitorExample.ts",
-    "transfer": "ts-node src/examples/transactionExample.ts",
-    "rates": "ts-node src/examples/ratesExample.ts",
-    "aftermath": "ts-node src/examples/aftermathClientExample.ts",
-    "wallet": "ts-node src/examples/walletExample.ts",
+    "start": "ts-node src/agent/agents.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
@@ -21,6 +17,7 @@
     "@mysten/sui.js": "^0.54.1",
     "aftermath-ts-sdk": "latest",
     "atoma-sdk": "github:atoma-network/atoma-sdk-typescript",
+    "dotenv": "^16.4.7",
     "events": "^3.3.0"
   },
   "devDependencies": {
