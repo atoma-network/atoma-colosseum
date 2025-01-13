@@ -245,6 +245,11 @@ impl GuessAiEngine {
                 .sui_client_ctx
                 .withdraw_funds_from_treasury_pool(sender, None, None, None)
                 .await?;
+            info!(
+                target = "sui_event_subscriber",
+                event = "new-guess-event",
+                "Withdrew funds from treasury pool successfully, tx_hash: {tx_hash}"
+            );
             todo!("Add a client for social media to post the tx_hash and sender of the winner");
         }
 
@@ -847,8 +852,60 @@ pub(crate) mod prompts {
         (system_prompt, user_prompt)
     }
 
+    /// Creates a system prompt for generating a secret word in the guessing game.
+    ///
+    /// This function returns a carefully crafted prompt that instructs an AI model to generate
+    /// a single English noun to be used as the secret word in the game. The prompt includes
+    /// specific constraints and formatting requirements to ensure consistent and appropriate
+    /// secret generation.
+    ///
+    /// # Constraints for Generated Secrets
+    ///
+    /// The prompt enforces the following rules:
+    /// - Must be a single English word (no spaces allowed)
+    /// - Cannot be a proper noun or brand name
+    /// - Must be relatively difficult to guess
+    /// - Must be output in a specific JSON format
+    ///
+    /// # Returns
+    ///
+    /// Returns a [`String`] containing the formatted prompt that will be sent to the AI model.
+    /// The expected response from the AI will be in JSON format:
+    ///
+    /// ```json
+    /// {
+    ///     "secret": "<the noun>"
+    /// }
+    /// ```
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// let prompt = create_secret_prompt();
+    /// // The prompt can then be sent to an AI model to generate a secret word
+    /// // The AI might respond with something like: {"secret": "kaleidoscope"}
+    /// ```
+    ///
+    /// Note: This function only creates the prompt - it does not interact with the AI model
+    /// or process the response.
     pub(crate) fn create_secret_prompt() -> String {
-        todo!()
+        format!("You are a creative and game-designing AI. Your sole task is to produce a single, random English noun, to be used as the secret for a guessing game.
+
+                    Constraints:
+                    1. The noun must be a single word (no spaces).
+                    2. It must not be a proper noun or brand name (e.g., 'London', 'Google' are disallowed).
+                    3. You must ONLY output valid JSON in this exact structure:
+
+                    {{
+                        \"secret\": \"<the noun>\"
+                    }}
+
+                    4. The noun should be difficult to guess, and not something that is commonly known, to make the game more engaging.
+                    4. Do not include any other text, commentary, disclaimers, or formatting—just the JSON.
+                    5. Do not reveal or describe your internal reasoning about how you chose the noun.
+
+                Your output must be the final answer. Nothing else.
+        ")
     }
 
     pub(crate) fn interact_with_social_media_prompt() -> String {
