@@ -1,4 +1,4 @@
-import { getPool, getAllPools } from '../aftermath/AftermathClient';
+import { getPool, getAllPools } from '../markets/PriceAnalysis';
 import { PoolInfo } from '../common/types';
 
 /**

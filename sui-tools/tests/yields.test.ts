@@ -2,12 +2,12 @@ import {
   calculateUtilization,
   calculateLendingRate,
   getLendingRate
-} from '../../src/rates/rates';
+} from '../src/yields/YieldAnalysis';
 
-import { getPool } from '../../src/aftermath/AftermathClient';
+import { getPool } from '../src/markets/PriceAnalysis';
 
 // Mock the AftermathClient's getPool function
-jest.mock('../../src/aftermath/AftermathClient', () => ({
+jest.mock('../src/markets/PriceAnalysis', () => ({
   getPool: jest.fn().mockResolvedValue({
     id: '0x0000000000000000000000000000000000000000000000000000000000000123',
     reserves: ['1000000', '500000']

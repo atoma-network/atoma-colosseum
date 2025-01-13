@@ -9,7 +9,7 @@ import {
   executeTransaction,
   buildTransferTx,
   createMoveVec
-} from '../../src/transactions/TransactionTools';
+} from '../src/transactions/transaction';
 
 // Mock SuiClient and its methods
 jest.mock('@mysten/sui.js/client', () => {

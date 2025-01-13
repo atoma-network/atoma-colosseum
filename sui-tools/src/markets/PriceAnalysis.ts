@@ -1,6 +1,8 @@
+import { EventEmitter } from 'events';
+import type { PriceAlert, PriceMonitor, TokenPrice } from '../common/types';
+
 import { Aftermath } from 'aftermath-ts-sdk';
-import { TokenPrice, PoolInfo } from '../common/types';
-import { AftermathPool } from '../common/types';
+import {PoolInfo } from '../common/types';
 
 let aftermathInstance: Aftermath | null = null;
 
@@ -27,6 +29,8 @@ export async function initAftermath(
   }
   return aftermathInstance;
 }
+
+
 
 /**
  * Fetches current price and 24h change for a token

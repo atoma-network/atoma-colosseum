@@ -6,7 +6,7 @@ import {
   getAllPools,
   getPricesApi,
   getPoolsApi,
-} from '../../src/aftermath/AftermathClient';
+} from '../src/markets/PriceAnalysis';
 
 // Mock the Aftermath SDK
 jest.mock('aftermath-ts-sdk', () => {
@@ -58,10 +58,11 @@ describe('AftermathClient Tests', () => {
     expect(priceInfo).toHaveProperty('current');
     expect(priceInfo).toHaveProperty('priceChange24h');
     expect(priceInfo.current).toBeGreaterThan(0);
+    expect(priceInfo.priceChange24h).toBeGreaterThan(0);
   });
 
   test('getPool retrieves pool information', async () => {
-    const poolId = 'test-pool-id';
+    const poolId = '0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78';
     const poolInfo = await getPool(poolId, 'TESTNET');
     expect(poolInfo).toBeDefined();
     if (!poolInfo) throw new Error('Pool not found');
