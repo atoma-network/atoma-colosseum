@@ -53,6 +53,7 @@ pub async fn generate_new_secret(
     client_private_key: &StaticSecret,
     generate_secret_prompt: String,
     model: String,
+    random_seed: u64,
     sui_client_ctx: &mut SuiClientContext,
 ) -> Result<String> {
     let client_public_key = PublicKey::from(client_private_key);
@@ -68,6 +69,7 @@ pub async fn generate_new_secret(
         "messages": [
             {"role": "system", "content": generate_secret_prompt},
         ],
+        "seed": random_seed,
     }))?;
 
     let response_body = atoma_sdk

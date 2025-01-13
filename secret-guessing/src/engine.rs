@@ -10,6 +10,7 @@ use events::{
     TDXQuoteResubmittedEvent,
 };
 use prompts::{GuessPromptResponse, HintPromptResponse};
+use rand::Rng;
 use serde_json::json;
 use std::{str::FromStr, time::Duration};
 use sui_sdk::{
@@ -23,7 +24,7 @@ use sui_sdk::{
 use thiserror::Error;
 use tokio::sync::watch::Receiver;
 use tracing::{error, info, instrument, trace};
-use x25519_dalek::{PublicKey, StaticSecret};
+use x25519_dalek::StaticSecret;
 
 /// The duration to wait for new events in seconds, if there are no new events.
 const DURATION_TO_WAIT_FOR_NEW_EVENTS_IN_MILLIS: u64 = 100;
@@ -47,6 +48,9 @@ pub struct GuessAiEngine {
     /// Event filter used to specify which blockchain events to subscribe to,
     /// configured to watch the Secret Guessing module
     pub filter: EventFilter,
+
+    /// The random seed to be used in each inference request
+    pub random_seed: u64,
 
     /// The secret phrase or word that players are trying to guess
     pub secret: String,
@@ -72,8 +76,8 @@ impl GuessAiEngine {
         };
 
         let mut rng = rand::thread_rng();
+        let random_seed = rng.gen();
         let client_private_key = StaticSecret::random_from_rng(&mut rng);
-        let client_public_key = PublicKey::from(&client_private_key);
         let generate_secret_prompt = prompts::create_secret_prompt();
         let model = config.model.clone();
         // let tdx_quote_bytes = tdx::generate_tdx_quote_bytes(&mut rng);
@@ -82,6 +86,7 @@ impl GuessAiEngine {
             &client_private_key,
             generate_secret_prompt,
             model,
+            random_seed,
             &mut sui_client_ctx,
         )
         .await?;
@@ -91,6 +96,7 @@ impl GuessAiEngine {
             client_private_key,
             config,
             filter,
+            random_seed,
             secret,
             sui_client_ctx,
             shutdown_signal,
@@ -219,6 +225,7 @@ impl GuessAiEngine {
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt},
                     ],
+                    "seed": self.random_seed,
                 }))?,
             )
             .await?;
@@ -252,6 +259,7 @@ impl GuessAiEngine {
                         "messages": [
                             { "role": "system", "content": hint_prompt },
                         ],
+                        "seed": self.random_seed,
                     }))?,
                 )
                 .await?;
@@ -268,7 +276,7 @@ impl GuessAiEngine {
 
     #[instrument(level = "info", skip_all, fields(event = "rotate-tdx-quote-event"))]
     async fn handle_rotate_tdx_quote_event(&mut self, event: RotateTdxQuoteEvent) -> Result<()> {
-        let RotateTdxQuoteEvent { epoch } = event;
+        let RotateTdxQuoteEvent { epoch, random_seed } = event;
         info!(
             target = "sui_event_subscriber",
             event = "rotate-tdx-quote-event",
@@ -282,12 +290,20 @@ impl GuessAiEngine {
             &client_private_key,
             generate_secret_prompt,
             self.config.model.clone(),
+            random_seed,
             &mut self.sui_client_ctx,
         )
         .await?;
+        // Update the self's state
         self.client_private_key = client_private_key;
+        self.random_seed = random_seed;
         self.secret = secret;
-        todo!("Add a client for social media to post the tx_hash and sender of the winner");
+        info!(
+            target = "sui_event_subscriber",
+            event = "rotate-tdx-quote-event",
+            "Generated new secret successfully"
+        );
+        Ok(())
     }
 
     #[instrument(
@@ -296,7 +312,11 @@ impl GuessAiEngine {
         fields(event = "tdx-quote-resubmitted-event")
     )]
     fn handle_tdx_quote_resubmitted_event(event: TDXQuoteResubmittedEvent) {
-        let TDXQuoteResubmittedEvent { epoch, tdx_quote_v4, public_key_bytes } = event;
+        let TDXQuoteResubmittedEvent {
+            epoch,
+            tdx_quote_v4,
+            public_key_bytes,
+        } = event;
         info!(
             target = "sui_event_subscriber",
             event = "tdx-quote-resubmitted-event",
@@ -601,6 +621,10 @@ pub(crate) mod events {
         /// The epoch number for the new TDX quote rotation
         #[serde(deserialize_with = "deserialize_string_to_u64")]
         pub(crate) epoch: u64,
+
+        /// The random seed to be used in each inference request
+        #[serde(deserialize_with = "deserialize_string_to_u64")]
+        pub(crate) random_seed: u64,
     }
 
     /// Event emitted when a TDX quote is resubmitted
