@@ -2,6 +2,14 @@ import { SuiClient, SuiHTTPTransport } from '@mysten/sui.js/client';
 import { TransactionBlock } from '@mysten/sui.js/transactions';
 import { NETWORK_CONFIG } from '../common/config';
 import { TokenBalance } from '../common/types';
+
+
+/** --------------------------------------------------------------------------
+ *                            Transaction Operations
+ * 
+ * --------------------------------------------------------------------------
+ */
+
 /**
  * Creates and initializes a Sui client for transaction operations
  * 
@@ -23,6 +31,34 @@ export function initSuiClient(network: "MAINNET" | "TESTNET" = "MAINNET"): SuiCl
     })
   });
 }
+
+/**
+ * Creates a programmable transaction block with common options
+ * 
+ * Initializes a new PTB with gas budget and other common settings.
+ * Provides a foundation for building complex transactions.
+ * 
+ * @param gasBudget - Maximum gas to spend (in MIST)
+ * @returns Initialized TransactionBlock
+ * 
+ * @example
+ * const ptb = createPTB(2000000);
+ * ptb.moveCall({...});
+ * const result = await executeTransaction(client, ptb, signer);
+ */
+export function createPTB(
+  gasBudget: number = 2000000
+): TransactionBlock {
+  const tx = new TransactionBlock();
+  tx.setGasBudget(gasBudget);
+  return tx;
+}
+
+/** --------------------------------------------------------------------------
+ *                            Transaction Operations
+ * 
+ * --------------------------------------------------------------------------
+ */
 
 /**
  * Builds a transaction for transferring a single token
@@ -165,6 +201,15 @@ export async function estimateGas(
  * console.log(`Transaction status: ${result.effects.status}`);
  * console.log(`Gas used: ${result.effects.gasUsed.computationCost}`);
  */
+
+
+/** --------------------------------------------------------------------------
+ *                            Transaction Operations
+ * 
+ * --------------------------------------------------------------------------
+ */ 
+
+
 export async function executeTransaction(
   client: SuiClient,
   tx: TransactionBlock,
@@ -185,9 +230,50 @@ export async function executeTransaction(
   }
 }
 
+
+/**
+ * Move function target format: `package::module::function`
+ */
+type MoveTarget = `${string}::${string}::${string}`;
+
+/**
+ * Adds a move call to an existing transaction block
+ * 
+ * Helper function to add a move call with proper typing and validation.
+ * 
+ * @param tx - Existing transaction block
+ * @param target - Move function to call (e.g., "0x2::sui::pay")
+ * @param typeArguments - Type arguments for generic functions
+ * @param args - Arguments for the function call
+ * @returns The transaction block for chaining
+ * 
+ * @example
+ * const ptb = createPTB();
+ * addMoveCall(ptb, "0x2::sui::pay", [], [recipient, amount]);
+ */
+export function addMoveCall(
+  tx: TransactionBlock,
+  target: MoveTarget,
+  typeArguments: string[] = [],
+  args: any[] = []
+): TransactionBlock {
+  tx.moveCall({
+    target,
+    typeArguments,
+    arguments: args
+  });
+  return tx;
+}
+
+/** --------------------------------------------------------------------------
+ *                            Transaction Operations
+ * 
+ * --------------------------------------------------------------------------
+ */ 
+
+
 /**
  * Creates a transaction to merge multiple coins of the same type
- * 
  * Combines multiple coin objects of the same type into a single coin.
  * Useful for consolidating fragmented coin balances.
  * 
@@ -226,61 +312,7 @@ export async function createMergeCoinsTx(
   return tx;
 }
 
-/**
- * Creates a programmable transaction block with common options
- * 
- * Initializes a new PTB with gas budget and other common settings.
- * Provides a foundation for building complex transactions.
- * 
- * @param gasBudget - Maximum gas to spend (in MIST)
- * @returns Initialized TransactionBlock
- * 
- * @example
- * const ptb = createPTB(2000000);
- * ptb.moveCall({...});
- * const result = await executeTransaction(client, ptb, signer);
- */
-export function createPTB(
-  gasBudget: number = 2000000
-): TransactionBlock {
-  const tx = new TransactionBlock();
-  tx.setGasBudget(gasBudget);
-  return tx;
-}
 
-/**
- * Move function target format: `package::module::function`
- */
-type MoveTarget = `${string}::${string}::${string}`;
-
-/**
- * Adds a move call to an existing transaction block
- * 
- * Helper function to add a move call with proper typing and validation.
- * 
- * @param tx - Existing transaction block
- * @param target - Move function to call (e.g., "0x2::sui::pay")
- * @param typeArguments - Type arguments for generic functions
- * @param args - Arguments for the function call
- * @returns The transaction block for chaining
- * 
- * @example
- * const ptb = createPTB();
- * addMoveCall(ptb, "0x2::sui::pay", [], [recipient, amount]);
- */
-export function addMoveCall(
-  tx: TransactionBlock,
-  target: MoveTarget,
-  typeArguments: string[] = [],
-  args: any[] = []
-): TransactionBlock {
-  tx.moveCall({
-    target,
-    typeArguments,
-    arguments: args
-  });
-  return tx;
-}
 
 /**
  * Creates a sponsored transaction block

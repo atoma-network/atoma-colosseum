@@ -1,6 +1,13 @@
 import { getPool, getAllPools } from '../markets/PriceAnalysis';
 import { PoolInfo } from '../common/types';
 
+
+/** --------------------------------------------------------------------------
+ *                            Yield Analysis
+ * 
+ * --------------------------------------------------------------------------
+ */ 
+
 /**
  * Converts Annual Percentage Rate (APR) to Annual Percentage Yield (APY)
  * 
@@ -35,6 +42,13 @@ export function apyToApr(
 ): number {
   return (Math.pow(1 + apy, 1 / compoundingFrequency) - 1) * compoundingFrequency * 100;
 }
+
+
+/** --------------------------------------------------------------------------
+ *                            Yield Calculations
+ * 
+ * --------------------------------------------------------------------------
+ */
 
 /**
  * Calculates the lending interest rate based on pool utilization
@@ -100,6 +114,29 @@ export function calculateImpermanentLoss(
   const impLoss = (2 * sqrtRatio) / (1 + priceRatio) - 1;
   return impLoss * poolShare * 100;
 }
+
+/**
+ * Fetches and calculates the APY for a specific pool
+ * 
+ * If the pool has no explicit APY, calculates it based on utilization rate
+ * 
+ * @param poolId - The unique identifier of the pool
+ * @param network - Optional network override ("MAINNET" | "TESTNET")
+ * @returns The pool's APY as a percentage
+ * @throws Error if pool not found or calculation fails
+ * 
+ * @example
+ * const apy = await getPoolApy("pool_123");
+ * console.log(`Pool APY: ${apy}%`);
+ */
+
+
+/** --------------------------------------------------------------------------
+ *                            Pool Operations
+ * 
+ * --------------------------------------------------------------------------
+ */ 
+
 
 /**
  * Fetches and calculates the APY for a specific pool
