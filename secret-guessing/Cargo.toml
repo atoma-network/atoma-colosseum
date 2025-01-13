@@ -8,6 +8,7 @@ aes-gcm = "0.10.3"
 anyhow = "1.0.95"
 base64 = "0.22.1"
 blake2 = "0.10.6"
+dcap-rs = { git = "https://github.com/automata-network/dcap-rs.git" }
 fastcrypto = "0.1.9"
 hkdf = "0.12.4"
 rand = "0.8.5"
@@ -17,6 +18,7 @@ serde_json = "1.0.135"
 sha2 = "0.10.8"
 sui-keys = { git = "https://github.com/mystenlabs/sui", package = "sui-keys", tag = "testnet-v1.39.3" }
 sui-sdk = { git = "https://github.com/mystenlabs/sui", package = "sui-sdk", tag = "testnet-v1.39.3" }
+# tdx = { git = "https://github.com/automata-network/tdx-attestation-sdk.git", branch = "main" }
 thiserror = "2.0.9"
 tokio = "1.42.0"
 toml = "0.8.19"

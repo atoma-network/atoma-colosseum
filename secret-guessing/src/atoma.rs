@@ -41,9 +41,11 @@ struct NodesModelsRetrieveResponse {
     public_key: String,
 
     /// The small ID of the node
+    #[allow(unused)]
     node_small_id: u64,
 
     /// The stack entry digest for the node
+    #[allow(unused)]
     stack_entry_digest: Option<String>,
 
     /// The small ID of the stack for the node

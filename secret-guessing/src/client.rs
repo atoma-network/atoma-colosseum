@@ -9,6 +9,7 @@ use sui_sdk::{
     wallet_context::WalletContext,
 };
 use tracing::{error, info, instrument};
+use x25519_dalek::PublicKey;
 
 use crate::SECRET_GUESSING_MODULE_NAME;
 
@@ -17,6 +18,9 @@ const GAS_BUDGET: u64 = 50_000_000; // 0.05 SUI
 
 /// The name of the function to withdraw funds from the treasury pool
 const WITHDRAW_FUNDS_FROM_TREASURY_POOL_FUNCTION_NAME: &str = "withdraw_funds_from_treasury_pool";
+
+/// The name of the function to submit the node public key
+const RESUBMIT_TDX_ATTESTATION_FUNCTION_NAME: &str = "resubmit_tdx_attestation";
 
 /// The result type for the Sui client
 type Result<T> = std::result::Result<T, SuiClientError>;
@@ -48,6 +52,52 @@ impl SuiClientContext {
         }
     }
 
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(
+            public_key = ?public_key,
+        )
+    )]
+    pub async fn submit_node_public_key(
+        &mut self,
+        public_key: PublicKey,
+        tdx_quote_bytes: Vec<u8>,
+        gas: Option<ObjectID>,
+        gas_budget: Option<u64>,
+        gas_price: Option<u64>,
+    ) -> Result<String> {
+        let client = self.wallet_context.get_client().await?;
+        let active_address = self.wallet_context.active_address()?;
+
+        let tx = client
+            .transaction_builder()
+            .move_call(
+                active_address,
+                self.secret_guessing_package_id,
+                SECRET_GUESSING_MODULE_NAME,
+                RESUBMIT_TDX_ATTESTATION_FUNCTION_NAME,
+                vec![],
+                vec![
+                    SuiJsonValue::from_object_id(self.secret_guessing_db),
+                    SuiJsonValue::new(public_key.to_bytes().into())?,
+                    SuiJsonValue::new(tdx_quote_bytes.into())?,
+                ],
+                gas,
+                gas_budget.unwrap_or(GAS_BUDGET),
+                gas_price,
+            )
+            .await?;
+
+        let tx = self.wallet_context.sign_transaction(&tx);
+        let response = self
+            .wallet_context
+            .execute_transaction_must_succeed(tx)
+            .await;
+
+        Ok(response.digest.to_string())
+    }
+
     /// Withdraws funds from the treasury pool and transfers them to the specified winner address.
     ///
     /// This method executes a Move call to withdraw funds from the Secret Guessing game's treasury pool
@@ -71,7 +121,7 @@ impl SuiClientContext {
     /// * The object ID parsing fails
     /// * The transaction execution fails
     #[instrument(
-        level = "info"
+        level = "info",
         skip_all,
         fields(
             winner_address = %winner_address,

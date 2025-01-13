@@ -2,10 +2,14 @@ use crate::{
     atoma::{self, AtomaSdk},
     client::{SuiClientContext, SuiClientError},
     config::SecretGuessingConfig,
+    generate_secret::{generate_new_secret, GenerateSecretError},
     SECRET_GUESSING_MODULE_NAME,
 };
-use events::{NewGuessEvent, SecretGuessingEvent, SecretGuessingEventIdentifier};
-use prompts::{GuessPromptResponse, SecretPromptResponse};
+use events::{
+    NewGuessEvent, RotateTdxQuoteEvent, SecretGuessingEvent, SecretGuessingEventIdentifier,
+    TDXQuoteResubmittedEvent,
+};
+use prompts::{GuessPromptResponse, HintPromptResponse};
 use serde_json::json;
 use std::{str::FromStr, time::Duration};
 use sui_sdk::{
@@ -19,10 +23,7 @@ use sui_sdk::{
 use thiserror::Error;
 use tokio::sync::watch::Receiver;
 use tracing::{error, info, instrument, trace};
-use x25519_dalek::StaticSecret;
-
-/// The Atoma API URL, for confidential chat completions
-const ATOMA_API_URL: &str = "https://api.atomacloud.cloud/v1/confidential/chat/completions";
+use x25519_dalek::{PublicKey, StaticSecret};
 
 /// The duration to wait for new events in seconds, if there are no new events.
 const DURATION_TO_WAIT_FOR_NEW_EVENTS_IN_MILLIS: u64 = 100;
@@ -33,7 +34,7 @@ pub(crate) type Result<T> = std::result::Result<T, SuiEventSubscriberError>;
 ///
 /// This struct provides functionality to subscribe to and process events
 /// from the Sui blockchain based on specified filters.
-pub struct SuiEventSubscriber {
+pub struct GuessAiEngine {
     /// The Atoma SDK instance
     pub atoma_sdk: AtomaSdk,
 
@@ -57,13 +58,12 @@ pub struct SuiEventSubscriber {
     pub shutdown_signal: Receiver<bool>,
 }
 
-impl SuiEventSubscriber {
+impl GuessAiEngine {
     /// Constructor
     pub async fn new(
         atoma_sdk: AtomaSdk,
-        client_private_key: StaticSecret,
         config: SecretGuessingConfig,
-        sui_client_ctx: SuiClientContext,
+        mut sui_client_ctx: SuiClientContext,
         shutdown_signal: Receiver<bool>,
     ) -> Result<Self> {
         let filter = EventFilter::MoveModule {
@@ -71,28 +71,27 @@ impl SuiEventSubscriber {
             module: Identifier::new(SECRET_GUESSING_MODULE_NAME).unwrap(),
         };
 
-        let secret_prompt = prompts::create_secret_prompt();
-        let chat_completions_request = serde_json::from_value(json!({
-            "model": config.model.clone(),
-            "messages": [
-                {"role": "system", "content": secret_prompt},
-            ],
-        }))?;
-
-        let response_body = atoma_sdk
-            .confidential_chat_completions(&client_private_key, chat_completions_request)
-            .await?;
-
-        let secret = serde_json::from_str::<SecretPromptResponse>(
-            &response_body.choices[0].message.content.clone(),
-        )?;
+        let mut rng = rand::thread_rng();
+        let client_private_key = StaticSecret::random_from_rng(&mut rng);
+        let client_public_key = PublicKey::from(&client_private_key);
+        let generate_secret_prompt = prompts::create_secret_prompt();
+        let model = config.model.clone();
+        // let tdx_quote_bytes = tdx::generate_tdx_quote_bytes(&mut rng);
+        let secret = generate_new_secret(
+            &atoma_sdk,
+            &client_private_key,
+            generate_secret_prompt,
+            model,
+            &mut sui_client_ctx,
+        )
+        .await?;
 
         Ok(Self {
             atoma_sdk,
             client_private_key,
             config,
             filter,
-            secret: secret.secret,
+            secret,
             sui_client_ctx,
             shutdown_signal,
         })
@@ -163,7 +162,7 @@ impl SuiEventSubscriber {
     #[instrument(level = "info", skip_all, fields(
         package_id = %self.config.package_id
     ))]
-    async fn handle_event(&self, event: SecretGuessingEvent, sender: SuiAddress) -> Result<()> {
+    async fn handle_event(&mut self, event: SecretGuessingEvent, sender: SuiAddress) -> Result<()> {
         match event {
             SecretGuessingEvent::PublishEvent(event) => {
                 info!(
@@ -177,10 +176,10 @@ impl SuiEventSubscriber {
                 self.handle_new_guess_event(event, sender).await?;
             }
             SecretGuessingEvent::RotateTdxQuoteEvent(event) => {
-                handle_rotate_tdx_quote_event(event).await?;
+                self.handle_rotate_tdx_quote_event(event).await?;
             }
             SecretGuessingEvent::TDXQuoteResubmittedEvent(event) => {
-                handle_tdx_quote_resubmitted_event(event).await?;
+                Self::handle_tdx_quote_resubmitted_event(event);
             }
         }
         Ok(())
@@ -239,15 +238,70 @@ impl SuiEventSubscriber {
                 .sui_client_ctx
                 .withdraw_funds_from_treasury_pool(sender, None, None, None)
                 .await?;
-
             todo!("Add a client for social media to post the tx_hash and sender of the winner");
         }
 
         if guess_count % self.config.hint_wait_count == 0 {
-            todo!("Add a client for social media to post the tx_hash and sender of the winner");
+            let hint_prompt = prompts::create_hint_prompt(&self.secret);
+            let response_body = self
+                .atoma_sdk
+                .confidential_chat_completions(
+                    &self.client_private_key,
+                    serde_json::from_value(json!({
+                        "model": self.config.model.clone(),
+                        "messages": [
+                            { "role": "system", "content": hint_prompt },
+                        ],
+                    }))?,
+                )
+                .await?;
+
+            let hint = serde_json::from_str::<HintPromptResponse>(
+                &response_body.choices[0].message.content.clone(),
+            )?;
+
+            todo!("Add a client for social media to post the hint");
         }
 
         Ok(())
+    }
+
+    #[instrument(level = "info", skip_all, fields(event = "rotate-tdx-quote-event"))]
+    async fn handle_rotate_tdx_quote_event(&mut self, event: RotateTdxQuoteEvent) -> Result<()> {
+        let RotateTdxQuoteEvent { epoch } = event;
+        info!(
+            target = "sui_event_subscriber",
+            event = "rotate-tdx-quote-event",
+            "RotateTdxQuoteEvent for epoch: {epoch}"
+        );
+        let generate_secret_prompt = prompts::create_secret_prompt();
+        let mut rng = rand::thread_rng();
+        let client_private_key = StaticSecret::random_from_rng(&mut rng);
+        let secret = generate_new_secret(
+            &self.atoma_sdk,
+            &client_private_key,
+            generate_secret_prompt,
+            self.config.model.clone(),
+            &mut self.sui_client_ctx,
+        )
+        .await?;
+        self.client_private_key = client_private_key;
+        self.secret = secret;
+        todo!("Add a client for social media to post the tx_hash and sender of the winner");
+    }
+
+    #[instrument(
+        level = "info",
+        skip_all,
+        fields(event = "tdx-quote-resubmitted-event")
+    )]
+    fn handle_tdx_quote_resubmitted_event(event: TDXQuoteResubmittedEvent) {
+        let TDXQuoteResubmittedEvent { epoch, tdx_quote_v4, public_key_bytes } = event;
+        info!(
+            target = "sui_event_subscriber",
+            event = "tdx-quote-resubmitted-event",
+            "TDXQuoteResubmittedEvent for epoch: {epoch}, tdx_quote_v4: {tdx_quote_v4:?}, public_key_bytes: {public_key_bytes:?}"
+        );
     }
 
     #[instrument(level = "info", skip_all, fields(
@@ -393,6 +447,8 @@ pub enum SuiEventSubscriberError {
     AtomaApiError(#[from] reqwest::Error),
     #[error("Sui client error: {0}")]
     SuiClientError(#[from] SuiClientError),
+    #[error("Failed to generate secret: {0}")]
+    GenerateSecretError(#[from] GenerateSecretError),
 }
 
 pub(crate) mod events {
@@ -545,15 +601,22 @@ pub(crate) mod events {
         /// The epoch number for the new TDX quote rotation
         #[serde(deserialize_with = "deserialize_string_to_u64")]
         pub(crate) epoch: u64,
-
-        /// The challenge nonce for the new TDX quote rotation
-        pub(crate) challenge_nonce: Vec<u8>,
     }
 
+    /// Event emitted when a TDX quote is resubmitted
+    ///
+    /// This struct represents the event data for when a TDX quote is resubmitted, which includes
+    /// the epoch number and the TDX quote v4.
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub(crate) struct TDXQuoteResubmittedEvent {
-        epoch: u64,
-        tdx_quote_v4: Vec<u8>,
+        /// The epoch number for the TDX quote resubmission
+        pub(crate) epoch: u64,
+
+        /// The TDX quote v4
+        pub(crate) tdx_quote_v4: Vec<u8>,
+
+        /// The agent's x25519 public key, for shared secret sharing encryption
+        pub(crate) public_key_bytes: Vec<u8>,
     }
 
     /// Deserializes a string representation of a number into a numeric type that implements FromStr.
@@ -699,6 +762,15 @@ pub(crate) mod prompts {
         pub(crate) secret: String,
     }
 
+    /// Response structure for the hint creation prompt.
+    ///
+    /// This struct represents the parsed response from the AI model when creating a hint.
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(crate) struct HintPromptResponse {
+        /// The created hint
+        pub(crate) hint: String,
+    }
+
     /// Creates system and user prompts for checking if a guess matches a secret.
     ///
     /// This function generates two prompts used to query an AI model to determine if a guess
@@ -756,6 +828,10 @@ pub(crate) mod prompts {
     }
 
     pub(crate) fn interact_with_social_media_prompt() -> String {
+        todo!()
+    }
+
+    pub(crate) fn create_hint_prompt(secret: &str) -> String {
         todo!()
     }
 }
