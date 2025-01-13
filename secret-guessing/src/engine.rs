@@ -191,6 +191,60 @@ impl GuessAiEngine {
         Ok(())
     }
 
+    /// Handles a new guess event from a player in the Secret Guessing game.
+    ///
+    /// This method processes a guess event by:
+    /// 1. Checking if the guess matches the secret (either exactly or semantically) using AI
+    /// 2. If correct, withdraws funds from the treasury pool to reward the winner
+    /// 3. Periodically generates hints using AI when guess count reaches threshold
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - A `NewGuessEvent` containing:
+    ///   * `guess` - The player's guessed word/phrase
+    ///   * `fee` - The fee paid to make the guess
+    ///   * `guess_count` - Total number of guesses made so far
+    ///   * `treasury_pool_balance` - Current balance in the treasury
+    /// * `sender` - The Sui address of the player who made the guess
+    ///
+    /// # Returns
+    ///
+    /// * `Result<()>` - Returns `Ok(())` if event handling succeeds, or a `SuiEventSubscriberError` if:
+    ///   * AI communication fails
+    ///   * Response parsing fails
+    ///   * Treasury withdrawal fails
+    ///
+    /// # AI Integration
+    ///
+    /// Uses the Atoma SDK to make two types of AI calls:
+    /// 1. Guess validation - Checks if guess matches secret using semantic comparison
+    /// 2. Hint generation - Creates hints every `hint_wait_count` guesses
+    ///
+    /// # Example Flow
+    ///
+    /// ```no_run
+    /// let event = NewGuessEvent {
+    ///     guess: "kaleidoscope".to_string(),
+    ///     fee: 100,
+    ///     guess_count: 5,
+    ///     treasury_pool_balance: 1000,
+    /// };
+    /// let sender = /* Sui address */;
+    ///
+    /// // If guess is correct:
+    /// // 1. Logs success
+    /// // 2. Withdraws funds to sender
+    /// // 3. Posts winner to social media (TODO)
+    ///
+    /// // If guess_count % hint_wait_count == 0:
+    /// // 1. Generates new hint
+    /// // 2. Posts hint to social media (TODO)
+    /// ```
+    ///
+    /// # Todo Items
+    ///
+    /// - [ ] Implement social media client to post winner information
+    /// - [ ] Implement social media client to post periodic hints
     #[instrument(level = "info", skip_all, fields(
         event = "new-guess-event",
         guess = %event.guess
@@ -279,6 +333,52 @@ impl GuessAiEngine {
         Ok(())
     }
 
+    /// Handles a TDX quote rotation event by generating a new secret and updating internal state.
+    ///
+    /// When a TDX (Trust Domain Extensions) quote rotation occurs, this handler:
+    /// 1. Generates a new client private key for secure communication
+    /// 2. Creates a new secret word using the AI model
+    /// 3. Updates the engine's internal state with the new values
+    ///
+    /// # Arguments
+    ///
+    /// * `&mut self` - Mutable reference to the GuessAiEngine instance
+    /// * `event` - A `RotateTdxQuoteEvent` containing:
+    ///   * `epoch` - The new epoch number for this rotation
+    ///   * `random_seed` - A new random seed to be used for AI inference requests
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), SuiEventSubscriberError>` - Returns `Ok(())` on successful handling,
+    ///   or a `SuiEventSubscriberError` if any step fails
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The secret generation process fails
+    /// * Communication with the AI model fails
+    /// * The Atoma SDK encounters an error
+    ///
+    /// # State Changes
+    ///
+    /// On successful execution, this method updates the following engine state:
+    /// * `client_private_key` - Set to a new random key
+    /// * `random_seed` - Updated to the seed from the event
+    /// * `secret` - Set to the newly generated secret word
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use secret_guessing::engine::GuessAiEngine;
+    /// # use secret_guessing::events::RotateTdxQuoteEvent;
+    /// async fn rotate_quote(engine: &mut GuessAiEngine) {
+    ///     let event = RotateTdxQuoteEvent {
+    ///         epoch: 42,
+    ///         random_seed: 12345,
+    ///     };
+    ///     engine.handle_rotate_tdx_quote_event(event).await.expect("Failed to handle rotation");
+    /// }
+    /// ```
     #[instrument(level = "info", skip_all, fields(event = "rotate-tdx-quote-event"))]
     async fn handle_rotate_tdx_quote_event(&mut self, event: RotateTdxQuoteEvent) -> Result<()> {
         let RotateTdxQuoteEvent { epoch, random_seed } = event;
@@ -329,6 +429,50 @@ impl GuessAiEngine {
         );
     }
 
+    /// Starts the event subscriber loop that processes Sui blockchain events.
+    ///
+    /// This method runs an infinite loop that:
+    /// 1. Queries the Sui blockchain for new events matching the configured filter
+    /// 2. Processes each event through appropriate handlers
+    /// 3. Maintains cursor state for event pagination
+    /// 4. Handles graceful shutdown via a shutdown signal
+    ///
+    /// # Event Processing Flow
+    /// - Queries events in pages using the Sui client
+    /// - For each event:
+    ///   - Parses the event type and data
+    ///   - Routes to appropriate handler based on event type
+    ///   - Logs errors if parsing or handling fails
+    /// - Updates cursor position after processing each page
+    /// - Waits briefly if no new events are available
+    ///
+    /// # Cursor Management
+    /// - Reads initial cursor position from TOML file
+    /// - Updates cursor file after processing each page of events
+    /// - Ensures cursor is saved on shutdown
+    ///
+    /// # Shutdown Handling
+    /// - Monitors a shutdown signal channel
+    /// - Performs graceful shutdown when signal is received
+    /// - Saves final cursor position before exiting
+    ///
+    /// # Errors
+    /// Returns `SuiEventSubscriberError` if:
+    /// - Event querying fails
+    /// - Event parsing fails
+    /// - Cursor file operations fail
+    /// - Shutdown signal handling fails
+    ///
+    /// # Example
+    /// ```no_run
+    /// use secret_guessing::engine::GuessAiEngine;
+    ///
+    /// async fn start_engine(engine: GuessAiEngine) {
+    ///     if let Err(e) = engine.run().await {
+    ///         eprintln!("Engine failed: {}", e);
+    ///     }
+    /// }
+    /// ```
     #[instrument(level = "info", skip_all, fields(
         package_id = %self.config.package_id
     ))]
