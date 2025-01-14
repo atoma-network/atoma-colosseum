@@ -4,7 +4,7 @@ import { AtomaSDK } from "atoma-sdk";
 import { TOOL_DEFINITIONS } from "./toolDefinitions";
 import { getTokenPrice, getCoinsPriceInfo } from "../markets/PriceAnalysis";
 
-// Add console.log to debug
+// Add debug
 console.log("API Key:", process.env.ATOMA_API_KEY ? "Present" : "Missing");
 
 // Initialize the Atoma SDK with proper authentication
@@ -21,6 +21,9 @@ Available Tools:
 ${JSON.stringify(TOOL_DEFINITIONS.price_analysis.tools, null, 2)}
 
 User Query: ${query}
+
+Important: When referencing values in your final_answer, use the format \${result.fieldname} 
+For example: "The current price is \${result.current} with a 24h change of \${result.priceChange24h}%"
 
 Provide your response in the following JSON format:
 {
@@ -115,13 +118,16 @@ async function getPriceInfo(query: string) {
         /\${([^}]+)}/g,
         (match: string, p1: string) => {
           try {
-            // Handle nested paths like "output.current"
-            const path = p1.split(".");
+            // If path starts with 'result', remove it
+            const path = p1.replace(/^result\./, "").split(".");
             let value = priceData;
             for (const key of path) {
               value = value[key];
             }
-            return value?.toString() || match;
+            // Format number to 3 decimal places if it's a number
+            return !isNaN(value)
+              ? Number(value).toFixed(3)
+              : value?.toString() || match;
           } catch {
             return match;
           }
@@ -149,8 +155,8 @@ async function main() {
   // Test different queries
   const queries = [
     "What is the current price of SUI?",
-    "Get me the price and 24h change for SUI and BTC",
-    "What was the price of SUI yesterday?",
+    //"Get me the price and 24h change for SUI",
+    //"What was the price of SUI yesterday?",
   ];
 
   for (const query of queries) {
@@ -163,7 +169,7 @@ async function main() {
   }
 }
 
-// Run the example if this file is being executed directly
+// Run the example if this fil
 if (require.main === module) {
   main().catch(console.error);
 }

@@ -95,11 +95,18 @@ export async function getTokenPrice(
   const prices = aftermath.Prices();
   const priceInfo = await prices.getCoinPriceInfo({ coin: tokenType });
 
+  // Get current price and ensure price change is a number
+  const current = Number(priceInfo.price);
+  const priceChange24h = Number(priceInfo.priceChange24HoursPercentage || 0);
+
+  // Calculate previous price from the percentage change
+  const previous = current / (1 + priceChange24h / 100);
+
   return {
-    current: priceInfo.price,
-    previous: priceInfo.price,
-    lastUpdated: Date.now(),
-    priceChange24h: priceInfo.priceChange24HoursPercentage,
+    current,
+    previous,
+    lastUpdated: new Date().toISOString(),
+    priceChange24h: Number(priceChange24h.toFixed(2)),
   };
 }
 
@@ -148,7 +155,7 @@ export async function getCoinsPriceInfo(
     acc[key] = {
       current: value.price,
       previous: value.price / (1 + value.priceChange24HoursPercentage / 100),
-      lastUpdated: Date.now(),
+      lastUpdated: new Date().toISOString(),
       priceChange24h: value.priceChange24HoursPercentage,
     };
     return acc;

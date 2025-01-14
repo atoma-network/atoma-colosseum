@@ -2,7 +2,7 @@
 export interface TokenPrice {
   current: number;
   previous: number;
-  lastUpdated: number;
+  lastUpdated: string;
   priceChange24h?: number;
 }
 
