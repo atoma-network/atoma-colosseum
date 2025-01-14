@@ -29,9 +29,9 @@ Available Tools:
 ${JSON.stringify(TOOL_DEFINITIONS.price_analysis.tools, null, 2)}
 
 Available Coins:
-- SUI (${COIN_ADDRESSES.SUI})
-- USDC (${COIN_ADDRESSES.USDC})
-- BTC (${COIN_ADDRESSES.BTC})
+${Object.entries(COIN_ADDRESSES)
+  .map(([symbol, address]) => `- ${symbol} (${address})`)
+  .join("\n")}
 
 User Query: ${query}
 
@@ -39,6 +39,7 @@ Important:
 - When referencing values in your final_answer, use the format \${result.fieldname}
 - For multiple coins, use \${results['coinAddress'].fieldname}
 - Always use the full coin address when specifying coins
+- All listed coins can be queried for price information
 
 Provide your response in the following JSON format:
 {
@@ -199,12 +200,18 @@ async function getPriceInfo(query: string) {
 async function main() {
   // Test different queries
   const queries = [
-    //"What is the current price of SUI?",
+    "What is the current price of SUI?",
     //"Get me the prices of SUI and USDC",
     //"Show me the current prices of SUI, USDC, and BTC",
-    "Get information about pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
-    "What's the spot price between SUI and USDC in pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
-    "show me all the pools",
+    //"Get information about pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
+    //"What's the spot price between SUI and USDC in pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
+    "what is the price of AFSUI",
+    "what is the price of MSUI",
+    "what is the price of CERT",
+    "what is the price of SPRING_SUI",
+    "what is the price of KSUI",
+    "what is the price of HASUI",
+    "what is the price of STSUI",
   ];
 
   for (const query of queries) {

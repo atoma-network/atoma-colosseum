@@ -266,6 +266,19 @@ export async function getPoolSpotPrice(
       throw new Error(`Pool not found: ${poolId}`);
     }
 
+    // Log available tokens in pool for debugging
+    console.log("Available tokens in pool:", Object.keys(pool.pool.coins));
+    console.log("Looking for tokens:", { coinInType, coinOutType });
+
+    // Check if tokens exist in pool
+    if (!pool.pool.coins[coinInType] || !pool.pool.coins[coinOutType]) {
+      throw new Error(
+        `Tokens not found in pool. Available tokens: ${Object.keys(
+          pool.pool.coins
+        ).join(", ")}`
+      );
+    }
+
     const spotPrice = pool.getSpotPrice({
       coinInType,
       coinOutType,
