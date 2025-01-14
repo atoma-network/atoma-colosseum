@@ -1,15 +1,16 @@
 import dotenv from "dotenv";
-dotenv.config();
+import path from "path";
+
+// Configure dotenv with explicit path
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
 import { AtomaSDK } from "atoma-sdk";
 import { TOOL_DEFINITIONS } from "./toolDefinitions";
 import { getTokenPrice, getCoinsPriceInfo } from "../markets/PriceAnalysis";
 
-// Add debug
-console.log("API Key:", process.env.ATOMA_API_KEY ? "Present" : "Missing");
-
 // Initialize the Atoma SDK with proper authentication
 const atomaSDK = new AtomaSDK({
-  bearerAuth: process.env.ATOMA_API_KEY,
+  bearerAuth: process.env.ATOMASDK_BEARER_AUTH,
 });
 
 // Create the prompt template for price queries
