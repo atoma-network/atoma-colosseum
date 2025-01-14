@@ -62,6 +62,78 @@ export const TOOL_DEFINITIONS = {
           },
         },
       },
+      {
+        name: "get_pool_info",
+        description:
+          "Retrieves detailed information about a specific liquidity pool",
+        inputs: [
+          {
+            name: "pool_id",
+            type: "string",
+            description: "Unique identifier of the pool",
+          },
+          {
+            name: "network",
+            type: "string",
+            description: "Network to query ('MAINNET' or 'TESTNET')",
+            optional: true,
+            default: "MAINNET",
+          },
+        ],
+        output: {
+          type: "object",
+          description: "Pool information including tokens, reserves, fees, TVL",
+        },
+      },
+      {
+        name: "get_all_pools",
+        description: "Fetches information about all available liquidity pools",
+        inputs: [
+          {
+            name: "network",
+            type: "string",
+            description: "Network to query ('MAINNET' or 'TESTNET')",
+            optional: true,
+            default: "MAINNET",
+          },
+        ],
+        output: {
+          type: "array",
+          description: "Array of pool information",
+        },
+      },
+      {
+        name: "get_pool_spot_price",
+        description: "Gets the spot price between two tokens in a pool",
+        inputs: [
+          {
+            name: "pool_id",
+            type: "string",
+            description: "Unique identifier of the pool",
+          },
+          {
+            name: "coin_in_type",
+            type: "string",
+            description: "Token type of the input coin",
+          },
+          {
+            name: "coin_out_type",
+            type: "string",
+            description: "Token type of the output coin",
+          },
+          {
+            name: "with_fees",
+            type: "boolean",
+            description: "Whether to include fees in calculation",
+            optional: true,
+            default: true,
+          },
+        ],
+        output: {
+          type: "number",
+          description: "Spot price of the pool",
+        },
+      },
     ],
   },
   yield_analysis: {

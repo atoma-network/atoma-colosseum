@@ -6,7 +6,14 @@ dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 import { AtomaSDK } from "atoma-sdk";
 import { TOOL_DEFINITIONS } from "./toolDefinitions";
-import { getTokenPrice, getCoinsPriceInfo } from "../markets/PriceAnalysis";
+import {
+  getTokenPrice,
+  getCoinsPriceInfo,
+  getPool,
+  getAllPools,
+  getPoolSpotPrice,
+} from "../markets/PriceAnalysis";
+import { COIN_ADDRESSES } from "../common/config";
 
 // Initialize the Atoma SDK with proper authentication
 const atomaSDK = new AtomaSDK({
@@ -21,10 +28,17 @@ Your task is to analyze the user's price-related query and determine the appropr
 Available Tools:
 ${JSON.stringify(TOOL_DEFINITIONS.price_analysis.tools, null, 2)}
 
+Available Coins:
+- SUI (${COIN_ADDRESSES.SUI})
+- USDC (${COIN_ADDRESSES.USDC})
+- BTC (${COIN_ADDRESSES.BTC})
+
 User Query: ${query}
 
-Important: When referencing values in your final_answer, use the format \${result.fieldname} 
-For example: "The current price is \${result.current} with a 24h change of \${result.priceChange24h}%"
+Important: 
+- When referencing values in your final_answer, use the format \${result.fieldname}
+- For multiple coins, use \${results['coinAddress'].fieldname}
+- Always use the full coin address when specifying coins
 
 Provide your response in the following JSON format:
 {
@@ -103,6 +117,21 @@ async function getPriceInfo(query: string) {
             action.input.network
           );
           break;
+        case "get_pool_info":
+          result = await getPool(action.input.pool_id, action.input.network);
+          break;
+        case "get_all_pools":
+          result = await getAllPools(action.input.network);
+          break;
+        case "get_pool_spot_price":
+          result = await getPoolSpotPrice(
+            action.input.pool_id,
+            action.input.coin_in_type,
+            action.input.coin_out_type,
+            action.input.with_fees,
+            action.input.network
+          );
+          break;
       }
 
       results.push({
@@ -111,7 +140,7 @@ async function getPriceInfo(query: string) {
       });
     }
 
-    // Format the final answer using the results
+    // Format final answer using the results
     let finalAnswer = aiResponse.final_answer;
     if (results.length > 0 && results[0].result) {
       const priceData = results[0].result as any;
@@ -119,16 +148,31 @@ async function getPriceInfo(query: string) {
         /\${([^}]+)}/g,
         (match: string, p1: string) => {
           try {
-            // If path starts with 'result', remove it
-            const path = p1.replace(/^result\./, "").split(".");
-            let value = priceData;
-            for (const key of path) {
-              value = value[key];
+            //single and multiple coin results
+            if (p1.includes("results[")) {
+              // For multiple coins
+              const matches = p1.match(/results\['([^']+)'\]\.(.+)/);
+              if (!matches) return match;
+              const [_, coin, field] = matches;
+
+              // special case for SUI's address
+              const normalizedCoin =
+                coin === "0x2::sui::SUI"
+                  ? "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
+                  : coin;
+
+              return priceData[normalizedCoin]?.[field]?.toFixed(3) || match;
+            } else {
+              // For single coin (existing logic)
+              const path = p1.replace(/^result\./, "").split(".");
+              let value = priceData;
+              for (const key of path) {
+                value = value[key];
+              }
+              return !isNaN(value)
+                ? Number(value).toFixed(3)
+                : value?.toString() || match;
             }
-            // Format number to 3 decimal places if it's a number
-            return !isNaN(value)
-              ? Number(value).toFixed(3)
-              : value?.toString() || match;
           } catch {
             return match;
           }
@@ -155,9 +199,12 @@ async function getPriceInfo(query: string) {
 async function main() {
   // Test different queries
   const queries = [
-    "What is the current price of SUI?",
-    //"Get me the price and 24h change for SUI",
-    //"What was the price of SUI yesterday?",
+    //"What is the current price of SUI?",
+    //"Get me the prices of SUI and USDC",
+    //"Show me the current prices of SUI, USDC, and BTC",
+    "Get information about pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
+    "What's the spot price between SUI and USDC in pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
+    "show me all the pools",
   ];
 
   for (const query of queries) {
@@ -170,7 +217,7 @@ async function main() {
   }
 }
 
-// Run the example if this fil
+// Run the example if this file is run directly
 if (require.main === module) {
   main().catch(console.error);
 }

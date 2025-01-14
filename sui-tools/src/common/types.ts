@@ -3,7 +3,7 @@ export interface TokenPrice {
   current: number;
   previous: number;
   lastUpdated: string;
-  priceChange24h?: number;
+  priceChange24h: number;
 }
 
 // Base interface for raw pool data
@@ -11,7 +11,7 @@ export interface RawPoolInfo {
   id: string;
   tokens: string[];
   coinTypes?: string[];
-  reserves: string[];
+  reserves: bigint[];
   fee?: number;
   tvl?: number;
   apy?: number;

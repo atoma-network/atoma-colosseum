@@ -2,3 +2,4 @@
 .env
 node_modules/
 sui-tools/node_modules/
+sui-tools/.env

@@ -163,106 +163,92 @@ export async function getCoinsPriceInfo(
 }
 
 /** --------------------------------------------------------------------------
- *                            Pool and Trade Operations
- *
+ *                            Pool Operations
  * --------------------------------------------------------------------------
  */
 
 /**
- * Converts raw pool data to our standardized format
- *
- * @param pool - Raw pool data from Aftermath
- * @param poolId - Unique identifier of the pool
- * @returns Processed pool information
- *
- * @example
- * const pool = await getPool("0x123...abc");
- * console.log(`Pool TVL: $${pool.tvl}`);
- * console.log(`Pool APY: ${pool.apy}%`);
+ * Processes raw pool data into standardized format
  */
-function processPool(pool: any, poolId: string): PoolInfo {
-  return {
-    id: poolId,
-    tokens: pool.coinTypes || [],
-    reserves: (pool.reserves || []).map((r: string) => BigInt(r)),
-    fee: pool.fee || 0,
-    tvl: pool.tvl || 0,
-    apy: pool.apy || 0,
-  };
+async function processPool(pool: any, poolId: string): Promise<PoolInfo> {
+  try {
+    // Extract coin types and their reserves
+    const tokens = Object.keys(pool.pool.coins || {});
+    const reserves = tokens.map((token) => {
+      const coinData = pool.pool.coins[token];
+      return BigInt(coinData.normalizedBalance || 0);
+    });
+
+    return {
+      id: poolId,
+      tokens,
+      reserves,
+      fee: Number(pool.pool.flatness || 0) / 1e9,
+      tvl: Number(pool.pool.lpCoinSupply || 0) / 1e9,
+      apy: 0,
+    };
+  } catch (error) {
+    console.error(`Error processing pool ${poolId}:`, error);
+    return {
+      id: poolId,
+      tokens: [],
+      reserves: [],
+      fee: 0,
+      tvl: 0,
+      apy: 0,
+    };
+  }
 }
 
 /**
- * Retrieves detailed information about a specific liquidity pool
- *
- * Fetches pool data including tokens, reserves, fees, TVL, and APY.
- * Converts raw data into standardized format with proper types.
- *
- * @param poolId - Unique identifier of the pool
- * @param network - Optional network override
- * @returns Processed pool information or undefined if pool not found
- * @throws Error if fetch fails
- *
- * @example
- * const pool = await getPool("0x123...abc");
- * if (pool) {
- *   console.log(`Pool TVL: $${pool.tvl}`);
- *   console.log(`Pool APY: ${pool.apy}%`);
- * }
+ * Gets pool information by ID
  */
 export async function getPool(
   poolId: string,
   network?: "MAINNET" | "TESTNET"
 ): Promise<PoolInfo | undefined> {
-  const aftermath = await initAftermath(network);
-  const pools = aftermath.Pools();
-  const pool = await pools.getPool({ objectId: poolId });
-
-  if (!pool) return undefined;
-  return processPool(pool, poolId);
+  try {
+    const aftermath = await initAftermath(network);
+    const pools = aftermath.Pools();
+    const pool = await pools.getPool({ objectId: poolId });
+    if (!pool) return undefined;
+    return processPool(pool, poolId);
+  } catch (error) {
+    console.error("Error fetching pool:", error);
+    return undefined;
+  }
 }
 
 /**
- * Fetches information about all available liquidity pools
- *
- * Retrieves and processes data for all pools on the Aftermath platform.
- * Each pool includes tokens, reserves, fees, TVL, and APY information.
- *
- * @param network - Optional network override
- * @returns Array of processed pool information
- * @throws Error if pools fetch fails
- *
- * @example
- * const pools = await getAllPools();
- * pools.forEach(pool => {
- *   console.log(`Pool ${pool.id}:`);
- *   console.log(`  TVL: $${pool.tvl}`);
- *   console.log(`  APY: ${pool.apy}%`);
- * });
+ * Gets all available pools
  */
 export async function getAllPools(
   network?: "MAINNET" | "TESTNET"
 ): Promise<PoolInfo[]> {
-  const aftermath = await initAftermath(network);
-  const pools = aftermath.Pools();
-  const allPools = await pools.getAllPools();
+  try {
+    const aftermath = await initAftermath(network);
+    const pools = aftermath.Pools();
+    const allPools = await pools.getAllPools();
 
-  return allPools.map((pool, index) => processPool(pool, `pool-${index}`));
+    // Process all pools and filter out invalid ones
+    const processedPools = await Promise.all(
+      allPools.map(async (pool) => {
+        if (!pool.pool?.objectId) return null;
+        return processPool(pool, pool.pool.objectId);
+      })
+    );
+
+    return processedPools.filter(
+      (pool): pool is PoolInfo => pool !== null && pool.tokens.length > 0
+    );
+  } catch (error) {
+    console.error("Error fetching all pools:", error);
+    return [];
+  }
 }
 
 /**
- * Adds pool calculations
- *
- * @param poolId - Unique identifier of the pool
- * @param coinInType - Token type of the input coin
- * @param coinOutType - Token type of the output coin
- * @param withFees - Whether to include fees in the calculation
- * @param network - Optional network override
- * @returns Spot price of the pool
- * @throws Error if pool not found or calculation fails
- *
- * @example
- * const price = await getPoolSpotPrice("0x123...abc", "0x2::sui::SUI", "0x2::sui::SUI");
- * console.log(`Current price: $${price}`);
+ * Gets spot price between two tokens in a pool
  */
 export async function getPoolSpotPrice(
   poolId: string,
@@ -271,37 +257,34 @@ export async function getPoolSpotPrice(
   withFees: boolean = true,
   network?: "MAINNET" | "TESTNET"
 ): Promise<number> {
-  const aftermath = await initAftermath(network);
-  const pools = aftermath.Pools();
-  const pool = await pools.getPool({ objectId: poolId });
+  try {
+    const aftermath = await initAftermath(network);
+    const pools = aftermath.Pools();
+    const pool = await pools.getPool({ objectId: poolId });
 
-  if (!pool) throw new Error(`Pool not found: ${poolId}`);
+    if (!pool) {
+      throw new Error(`Pool not found: ${poolId}`);
+    }
 
-  // Type assertion after checking pool methods exist
-  if (typeof pool.getSpotPrice !== "function") {
-    throw new Error("Pool does not support spot price calculation");
+    const spotPrice = pool.getSpotPrice({
+      coinInType,
+      coinOutType,
+      withFees,
+    });
+
+    return spotPrice;
+  } catch (error) {
+    console.error(`Error getting spot price for pool ${poolId}:`, error);
+    throw new Error(
+      `Failed to get spot price: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
   }
-
-  return pool.getSpotPrice({
-    coinInType,
-    coinOutType,
-    withFees,
-  });
 }
 
 /**
- * Adds router functionality
- *
- * @param coinInType - Token type of the input coin
- * @param coinOutType - Token type of the output coin
- * @param coinInAmount - Amount of the input coin
- * @param network - Optional network override
- * @returns Trade route information
- * @throws Error if router not found or route calculation fails
- *
- * @example
- * const route = await getTradeRoute("0x2::sui::SUI", "0x2::sui::SUI", BigInt(100));
- * console.log(`Route:`, route);
+ * Gets trade route information
  */
 export async function getTradeRoute(
   coinInType: string,
@@ -309,13 +292,23 @@ export async function getTradeRoute(
   coinInAmount: bigint,
   network?: "MAINNET" | "TESTNET"
 ): Promise<any> {
-  const aftermath = await initAftermath(network);
-  const router = aftermath.Router();
-  return router.getCompleteTradeRouteGivenAmountIn({
-    coinInType,
-    coinOutType,
-    coinInAmount,
-  });
+  try {
+    const aftermath = await initAftermath(network);
+    const router = aftermath.Router();
+
+    return router.getCompleteTradeRouteGivenAmountIn({
+      coinInType,
+      coinOutType,
+      coinInAmount,
+    });
+  } catch (error) {
+    console.error("Error getting trade route:", error);
+    throw new Error(
+      `Failed to get trade route: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`
+    );
+  }
 }
 
 /**
