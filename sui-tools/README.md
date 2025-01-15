@@ -43,7 +43,7 @@ await wallet.transfer({
 
 // Sign and send custom transaction
 const txb = new TransactionBlock();
-// ...
+// ... add transaction operations
 const result = await wallet.sendTransaction(txb);
 console.log("Transaction hash:", result.hash);
 ```
@@ -136,7 +136,3 @@ For more detailed examples and API documentation, check the `examples` directory
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-```
-
-```
