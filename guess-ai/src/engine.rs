@@ -1,13 +1,13 @@
 use crate::{
     atoma::{self, AtomaSdk},
     client::{SuiClientContext, SuiClientError},
-    config::SecretGuessingConfig,
+    config::GuessAiConfig,
     generate_secret::{generate_new_secret, GenerateSecretError},
     twitter::TwitterClient,
-    SECRET_GUESSING_MODULE_NAME,
+    GUESS_AI_MODULE_NAME,
 };
 use events::{
-    NewGuessEvent, RotateTdxQuoteEvent, SecretGuessingEvent, SecretGuessingEventIdentifier,
+    GuessAiEvent, GuessAiEventIdentifier, NewGuessEvent, RotateTdxQuoteEvent,
     TDXQuoteResubmittedEvent,
 };
 use prompts::{GuessPromptResponse, HintPromptResponse};
@@ -30,7 +30,7 @@ use x25519_dalek::StaticSecret;
 /// The duration to wait for new events in seconds, if there are no new events.
 const DURATION_TO_WAIT_FOR_NEW_EVENTS_IN_MILLIS: u64 = 100;
 
-pub(crate) type Result<T> = std::result::Result<T, SuiEventSubscriberError>;
+pub type Result<T> = std::result::Result<T, GuessAiEngineError>;
 
 /// A subscriber for Sui blockchain events.
 ///
@@ -43,8 +43,8 @@ pub struct GuessAiEngine {
     /// The client private key
     pub client_private_key: StaticSecret,
 
-    /// Configuration settings for the Secret Guessing application
-    pub config: SecretGuessingConfig,
+    /// Configuration settings for the Guess AI application
+    pub config: GuessAiConfig,
 
     /// Event filter used to specify which blockchain events to subscribe to,
     /// configured to watch the Secret Guessing module
@@ -70,18 +70,17 @@ impl GuessAiEngine {
     /// Constructor
     pub async fn new(
         atoma_sdk: AtomaSdk,
-        config: SecretGuessingConfig,
+        config: GuessAiConfig,
         mut sui_client_ctx: SuiClientContext,
         shutdown_signal: Receiver<bool>,
     ) -> Result<Self> {
         let filter = EventFilter::MoveModule {
-            package: ObjectID::from_str(&config.package_id).unwrap(),
-            module: Identifier::new(SECRET_GUESSING_MODULE_NAME).unwrap(),
+            package: ObjectID::from_str(&config.guess_ai_package_id).unwrap(),
+            module: Identifier::new(GUESS_AI_MODULE_NAME).unwrap(),
         };
 
-        let mut rng = rand::thread_rng();
-        let random_seed = rng.gen();
-        let client_private_key = StaticSecret::random_from_rng(&mut rng);
+        let random_seed = rand::random::<u64>();
+        let client_private_key = StaticSecret::random_from_rng(&mut rand::thread_rng());
         let generate_secret_prompt = prompts::create_secret_prompt();
         let model = config.model.clone();
         // let tdx_quote_bytes = tdx::generate_tdx_quote_bytes(&mut rng);
@@ -129,7 +128,7 @@ impl GuessAiEngine {
     /// # Returns
     ///
     /// * `Result<SuiClient>` - A Result containing the newly created SuiClient if successful,
-    ///                         or a SuiEventSubscriberError if the client creation fails.
+    ///                         or a GuessAiEngineError if the client creation fails.
     ///
     /// # Errors
     ///
@@ -139,7 +138,7 @@ impl GuessAiEngine {
     #[instrument(level = "info", skip_all, fields(
         http_rpc_node_addr = %config.http_rpc_node_addr
     ))]
-    pub async fn build_client(config: &SecretGuessingConfig) -> Result<SuiClient> {
+    pub async fn build_client(config: &GuessAiConfig) -> Result<SuiClient> {
         let mut client_builder = SuiClientBuilder::default();
         if let Some(request_timeout) = config.request_timeout {
             client_builder = client_builder.request_timeout(Duration::from_millis(request_timeout));
@@ -161,7 +160,7 @@ impl GuessAiEngine {
     ///
     /// # Arguments
     ///
-    /// * `event` - A `SecretGuessingEvent` enum representing the different types of events
+    /// * `event` - A `GuessAiEvent` enum representing the different types of events
     ///            that can be processed:
     ///   * `PublishEvent` - Logs when a new contract is published
     ///   * `NewGuessEvent` - Triggers processing of a new guess
@@ -171,18 +170,18 @@ impl GuessAiEngine {
     /// # Returns
     ///
     /// * `Result<()>` - Returns `Ok(())` if the event was handled successfully,
-    ///                  or a `SuiEventSubscriberError` if processing fails
+    ///                  or a `GuessAiEngineError` if processing fails
     ///
     /// # Errors
     ///
     /// This function will return an error if any of the individual event handlers fail
     /// during event processing.
     #[instrument(level = "info", skip_all, fields(
-        package_id = %self.config.package_id
+        package_id = %self.config.guess_ai_package_id
     ))]
-    async fn handle_event(&mut self, event: SecretGuessingEvent, sender: SuiAddress) -> Result<()> {
+    async fn handle_event(&mut self, event: GuessAiEvent, sender: SuiAddress) -> Result<()> {
         match event {
-            SecretGuessingEvent::PublishEvent(event) => {
+            GuessAiEvent::PublishEvent(event) => {
                 info!(
                     target = "sui_event_subscriber",
                     event = "publish-event",
@@ -190,13 +189,13 @@ impl GuessAiEngine {
                     event
                 );
             }
-            SecretGuessingEvent::NewGuessEvent(event) => {
+            GuessAiEvent::NewGuessEvent(event) => {
                 self.handle_new_guess_event(event, sender).await?;
             }
-            SecretGuessingEvent::RotateTdxQuoteEvent(event) => {
+            GuessAiEvent::RotateTdxQuoteEvent(event) => {
                 self.handle_rotate_tdx_quote_event(event).await?;
             }
-            SecretGuessingEvent::TDXQuoteResubmittedEvent(event) => {
+            GuessAiEvent::TDXQuoteResubmittedEvent(event) => {
                 Self::handle_tdx_quote_resubmitted_event(event);
             }
         }
@@ -221,7 +220,7 @@ impl GuessAiEngine {
     ///
     /// # Returns
     ///
-    /// * `Result<()>` - Returns `Ok(())` if event handling succeeds, or a `SuiEventSubscriberError` if:
+    /// * `Result<()>` - Returns `Ok(())` if event handling succeeds, or a `GuessAiEngineError` if:
     ///   * AI communication fails
     ///   * Response parsing fails
     ///   * Treasury withdrawal fails
@@ -361,8 +360,8 @@ impl GuessAiEngine {
     ///
     /// # Returns
     ///
-    /// * `Result<(), SuiEventSubscriberError>` - Returns `Ok(())` on successful handling,
-    ///   or a `SuiEventSubscriberError` if any step fails
+    /// * `Result<(), GuessAiEngineError>` - Returns `Ok(())` on successful handling,
+    ///   or a `GuessAiEngineError` if any step fails
     ///
     /// # Errors
     ///
@@ -381,8 +380,8 @@ impl GuessAiEngine {
     /// # Example
     ///
     /// ```no_run
-    /// # use secret_guessing::engine::GuessAiEngine;
-    /// # use secret_guessing::events::RotateTdxQuoteEvent;
+    /// # use guess_ai::engine::GuessAiEngine;
+    /// # use guess_ai::events::RotateTdxQuoteEvent;
     /// async fn rotate_quote(engine: &mut GuessAiEngine) {
     ///     let event = RotateTdxQuoteEvent {
     ///         epoch: 42,
@@ -469,7 +468,7 @@ impl GuessAiEngine {
     /// - Saves final cursor position before exiting
     ///
     /// # Errors
-    /// Returns `SuiEventSubscriberError` if:
+    /// Returns `GuessAiEngineError` if:
     /// - Event querying fails
     /// - Event parsing fails
     /// - Cursor file operations fail
@@ -477,7 +476,7 @@ impl GuessAiEngine {
     ///
     /// # Example
     /// ```no_run
-    /// use secret_guessing::engine::GuessAiEngine;
+    /// use guess_ai::engine::GuessAiEngine;
     ///
     /// async fn start_engine(engine: GuessAiEngine) {
     ///     if let Err(e) = engine.run().await {
@@ -486,10 +485,10 @@ impl GuessAiEngine {
     /// }
     /// ```
     #[instrument(level = "info", skip_all, fields(
-        package_id = %self.config.package_id
+        package_id = %self.config.guess_ai_package_id
     ))]
     pub async fn run(mut self) -> Result<()> {
-        let package_id = self.config.package_id.clone();
+        let package_id = self.config.guess_ai_package_id.clone();
         let client = Self::build_client(&self.config).await?;
 
         info!(
@@ -527,7 +526,7 @@ impl GuessAiEngine {
                                 event_name = %event_name,
                                 "Received new event: {event_name:#?}"
                             );
-                            match SecretGuessingEventIdentifier::from_str(event_name.as_str()) {
+                            match GuessAiEventIdentifier::from_str(event_name.as_str()) {
                                 Ok(event_id) => {
                                     let sender = sui_event.sender;
                                     let event = match events::parse_event(event_id, sui_event.parsed_json) {
@@ -607,7 +606,7 @@ impl GuessAiEngine {
 }
 
 #[derive(Debug, Error)]
-pub enum SuiEventSubscriberError {
+pub enum GuessAiEngineError {
     #[error("Atoma SDK error: {0}")]
     AtomaSdkError(#[from] atoma::AtomaSdkError),
     #[error("Failed to read events: {0}")]
@@ -630,6 +629,8 @@ pub enum SuiEventSubscriberError {
     SuiClientError(#[from] SuiClientError),
     #[error("Failed to generate secret: {0}")]
     GenerateSecretError(#[from] GenerateSecretError),
+    #[error("Failed to create wallet context: {0}")]
+    WalletContextError(#[from] anyhow::Error),
 }
 
 pub(crate) mod events {
@@ -637,11 +638,11 @@ pub(crate) mod events {
     use serde_json::Value;
     use std::str::FromStr;
 
-    use super::SuiEventSubscriberError;
+    use super::GuessAiEngineError;
 
     /// The Secret Guessing contract events
     #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub(crate) enum SecretGuessingEvent {
+    pub(crate) enum GuessAiEvent {
         PublishEvent(PublishEvent),
         NewGuessEvent(NewGuessEvent),
         RotateTdxQuoteEvent(RotateTdxQuoteEvent),
@@ -650,26 +651,24 @@ pub(crate) mod events {
 
     /// The Secret Guessing contract events identifiers
     #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub enum SecretGuessingEventIdentifier {
+    pub enum GuessAiEventIdentifier {
         PublishEvent,
         NewGuessEvent,
         RotateTdxQuoteEvent,
         TDXQuoteResubmittedEvent,
     }
 
-    impl FromStr for SecretGuessingEventIdentifier {
-        type Err = SuiEventSubscriberError;
+    impl FromStr for GuessAiEventIdentifier {
+        type Err = GuessAiEngineError;
 
         fn from_str(s: &str) -> Result<Self, Self::Err> {
             Ok(match s {
-                "PublishEvent" => SecretGuessingEventIdentifier::PublishEvent,
-                "NewGuessEvent" => SecretGuessingEventIdentifier::NewGuessEvent,
-                "RotateTdxQuoteEvent" => SecretGuessingEventIdentifier::RotateTdxQuoteEvent,
-                "TDXQuoteResubmittedEvent" => {
-                    SecretGuessingEventIdentifier::TDXQuoteResubmittedEvent
-                }
+                "PublishEvent" => GuessAiEventIdentifier::PublishEvent,
+                "NewGuessEvent" => GuessAiEventIdentifier::NewGuessEvent,
+                "RotateTdxQuoteEvent" => GuessAiEventIdentifier::RotateTdxQuoteEvent,
+                "TDXQuoteResubmittedEvent" => GuessAiEventIdentifier::TDXQuoteResubmittedEvent,
                 _ => {
-                    return Err(SuiEventSubscriberError::InvalidEvent(Value::String(
+                    return Err(GuessAiEngineError::InvalidEvent(Value::String(
                         s.to_string(),
                     )))
                 }
@@ -677,26 +676,26 @@ pub(crate) mod events {
         }
     }
 
-    /// Parses a raw event value into a typed `SecretGuessingEvent` based on its identifier.
+    /// Parses a raw event value into a typed `GuessAiEvent` based on its identifier.
     ///
     /// This function takes an event identifier and a raw JSON value, and attempts to deserialize
     /// the value into the corresponding event type. It handles all event types defined in the
-    /// `SecretGuessingEventIdentifier` enum.
+    /// `GuessAiEventIdentifier` enum.
     ///
     /// # Arguments
     ///
-    /// * `event` - A `SecretGuessingEventIdentifier` indicating which type of event to parse
+    /// * `event` - A `GuessAiEventIdentifier` indicating which type of event to parse
     /// * `value` - A raw JSON `Value` containing the event data to be deserialized
     ///
     /// # Returns
     ///
-    /// * `Result<SecretGuessingEvent, SuiEventSubscriberError>` - A Result containing either:
-    ///   * The parsed event as a `SecretGuessingEvent` enum variant
-    ///   * A `SuiEventSubscriberError` if parsing fails
+    /// * `Result<GuessAiEvent, GuessAiEngineError>` - A Result containing either:
+    ///   * The parsed event as a `GuessAiEvent` enum variant
+    ///   * A `GuessAiEngineError` if parsing fails
     ///
     /// # Errors
     ///
-    /// Returns `SuiEventSubscriberError` if:
+    /// Returns `GuessAiEngineError` if:
     /// * The JSON deserialization fails
     /// * The event identifier doesn't match any known event type
     ///
@@ -705,7 +704,7 @@ pub(crate) mod events {
     /// ```
     /// use serde_json::json;
     ///
-    /// let event_id = SecretGuessingEventIdentifier::NewGuessEvent;
+    /// let event_id = GuessAiEventIdentifier::NewGuessEvent;
     /// let value = json!({
     ///     "fee": "100",
     ///     "guess": "hello",
@@ -715,28 +714,28 @@ pub(crate) mod events {
     ///
     /// let parsed = parse_event(event_id, value)?;
     /// match parsed {
-    ///     SecretGuessingEvent::NewGuessEvent(event) => {
+    ///     GuessAiEvent::NewGuessEvent(event) => {
     ///         println!("Parsed guess: {}", event.guess);
     ///     }
     ///     _ => panic!("Unexpected event type")
     /// }
     /// ```
     pub(crate) fn parse_event(
-        event: SecretGuessingEventIdentifier,
+        event: GuessAiEventIdentifier,
         value: Value,
-    ) -> Result<SecretGuessingEvent, SuiEventSubscriberError> {
+    ) -> Result<GuessAiEvent, GuessAiEngineError> {
         match event {
-            SecretGuessingEventIdentifier::PublishEvent => Ok(SecretGuessingEvent::PublishEvent(
+            GuessAiEventIdentifier::PublishEvent => {
+                Ok(GuessAiEvent::PublishEvent(serde_json::from_value(value)?))
+            }
+            GuessAiEventIdentifier::NewGuessEvent => {
+                Ok(GuessAiEvent::NewGuessEvent(serde_json::from_value(value)?))
+            }
+            GuessAiEventIdentifier::RotateTdxQuoteEvent => Ok(GuessAiEvent::RotateTdxQuoteEvent(
                 serde_json::from_value(value)?,
             )),
-            SecretGuessingEventIdentifier::NewGuessEvent => Ok(SecretGuessingEvent::NewGuessEvent(
-                serde_json::from_value(value)?,
-            )),
-            SecretGuessingEventIdentifier::RotateTdxQuoteEvent => Ok(
-                SecretGuessingEvent::RotateTdxQuoteEvent(serde_json::from_value(value)?),
-            ),
-            SecretGuessingEventIdentifier::TDXQuoteResubmittedEvent => Ok(
-                SecretGuessingEvent::TDXQuoteResubmittedEvent(serde_json::from_value(value)?),
+            GuessAiEventIdentifier::TDXQuoteResubmittedEvent => Ok(
+                GuessAiEvent::TDXQuoteResubmittedEvent(serde_json::from_value(value)?),
             ),
         }
     }
@@ -841,7 +840,7 @@ pub(crate) mod events {
 pub(crate) mod cursor {
     use sui_sdk::types::event::EventID;
 
-    use super::SuiEventSubscriberError;
+    use super::GuessAiEngineError;
 
     /// Reads an event cursor from a TOML file.
     ///
@@ -858,7 +857,7 @@ pub(crate) mod cursor {
     /// * `Result<Option<EventID>>` - Returns:
     ///   * `Ok(Some(EventID))` if the file exists and was successfully parsed
     ///   * `Ok(None)` if the file doesn't exist (and was created)
-    ///   * `Err(SuiEventSubscriberError)` if:
+    ///   * `Err(GuessAiEngineError)` if:
     ///     * The file exists but couldn't be read
     ///     * The file contents couldn't be parsed as TOML
     ///     * The file couldn't be created when not found
@@ -875,11 +874,11 @@ pub(crate) mod cursor {
     /// ```
     pub(crate) fn read_cursor_from_toml_file(
         path: &str,
-    ) -> Result<Option<EventID>, SuiEventSubscriberError> {
+    ) -> Result<Option<EventID>, GuessAiEngineError> {
         let content = match std::fs::read_to_string(path) {
             Ok(content) => content,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(SuiEventSubscriberError::CursorFileError(e)),
+            Err(e) => return Err(GuessAiEngineError::CursorFileError(e)),
         };
 
         Ok(Some(toml::from_str(&content)?))
@@ -913,7 +912,7 @@ pub(crate) mod cursor {
     pub(crate) fn write_cursor_to_toml_file(
         cursor: Option<EventID>,
         path: &str,
-    ) -> Result<(), SuiEventSubscriberError> {
+    ) -> Result<(), GuessAiEngineError> {
         if let Some(cursor) = cursor {
             let toml_str = toml::to_string(&cursor)?;
             std::fs::write(path, toml_str)?;

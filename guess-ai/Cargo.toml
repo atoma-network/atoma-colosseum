@@ -1,5 +1,5 @@
 [package]
-name = "secret-guessing"
+name = "guess-ai"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,10 @@ aes-gcm = "0.10.3"
 anyhow = "1.0.95"
 base64 = "0.22.1"
 blake2 = "0.10.6"
+clap = "4.5.26"
+config = "0.15.6"
 dcap-rs = { git = "https://github.com/automata-network/dcap-rs.git" }
+dotenv = "0.15.0"
 egg-mode = "0.16.1"
 fastcrypto = "0.1.9"
 hkdf = "0.12.4"
@@ -24,4 +27,5 @@ thiserror = "2.0.9"
 tokio = "1.42.0"
 toml = "0.8.19"
 tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }

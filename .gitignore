@@ -1,1 +1,2 @@
-secret-guessing/target/
+guess-ai/target/
+.env
