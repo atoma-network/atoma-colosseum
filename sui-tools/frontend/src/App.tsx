@@ -31,9 +31,6 @@ interface QueryResponse {
   request?: string;
 }
 
-// Add API URL from environment
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001';
-
 function App() {
   const [query, setQuery] = useState('');
   const [response, setResponse] = useState<QueryResponse | null>(null);
@@ -100,7 +97,7 @@ function App() {
         return;
       }
 
-      const result = await axios.post<QueryResponse>(`${API_URL}/api/query`, { query });
+      const result = await axios.post<QueryResponse>('http://localhost:3001/api/query', { query });
       
       // Handle different response types
       if (result.data.status === 'needs_info') {

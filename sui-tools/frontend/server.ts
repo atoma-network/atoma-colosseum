@@ -3,11 +3,7 @@ import cors from "cors";
 import { getPriceInfo } from "../src/agent/agents";
 
 const app = express();
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
-  })
-);
+app.use(cors());
 app.use(express.json());
 
 const TIMEOUT = 30000; // 30 seconds timeout
