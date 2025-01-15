@@ -21,14 +21,19 @@ import {
 import { FaSearch, FaInfoCircle } from 'react-icons/fa';
 import axios from 'axios';
 
-// Add new response type
+// Update interfaces to match new agent response format
 interface QueryResponse {
   status: 'success' | 'error' | 'needs_info';
-  error?: string;
-  final_answer?: string;
-  reasoning?: string;
-  results?: any[];
+  reasoning: string;
+  error_message?: string;
   request?: string;
+  final_answer?: string;
+  results?: any[];
+  actions?: {
+    tool: string;
+    input: Record<string, any>;
+    expected_outcome: string;
+  }[];
 }
 
 function App() {
@@ -44,21 +49,17 @@ function App() {
   const bgColor = useColorModeValue('white', 'gray.800');
   const borderColor = useColorModeValue('gray.200', 'gray.600');
 
+  // Update sample queries to better demonstrate agent capabilities
   const sampleQueries = [
     {
       text: "Pool Overview",
       query: "Get information about pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78",
-      category: "Overview"
+      category: "Analysis"
     },
     {
-      text: "Pool APR",
-      query: "What's the APR of pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
-      category: "Returns"
-    },
-    {
-      text: "Daily Fees",
-      query: "Show me the daily fees for pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78",
-      category: "Metrics"
+      text: "Top 10 Pools",
+      query: "What are the top 10 pools by tvl?",
+      category: "Rankings"
     },
     {
       text: "Spot Price",
@@ -66,106 +67,116 @@ function App() {
       category: "Price"
     },
     {
-      text: "SUI Price",
-      query: "What's the current price of SUI?",
-      category: "Price"
-    },
-    {
-      text: "Multi Prices",
+      text: "Token Prices",
       query: "Show me the prices of SUI, USDC, and BTC",
-      category: "Price"
+      category: "Market"
     }
   ];
 
-  const handleSubmit = useCallback(async () => {
-    if (!query.trim()) {
-      toast({
-        title: '🤔 Need a Question',
-        description: 'Please ask me something about Sui pools or tokens',
-        status: 'info',
-        duration: 3000,
-        isClosable: true,
-      });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      if (responseCache[query] && retryCount === 0) {
-        setResponse(responseCache[query]);
-        setLoading(false);
-        return;
-      }
-
-      const result = await axios.post<QueryResponse>('http://localhost:3001/api/query', { query });
-      
-      // Handle different response types
-      if (result.data.status === 'needs_info') {
-        toast({
-          title: '🤔 Need More Information',
-          description: result.data.request || 'Could you provide more details?',
-          status: 'info',
-          duration: 5000,
-          isClosable: true,
-        });
-        return;
-      }
-
-      if (result.data.status === 'error') {
-        throw new Error(result.data.error || 'Failed to get data');
-      }
-
-      setResponseCache(prev => ({...prev, [query]: result.data}));
-      setResponse(result.data);
-      setRetryCount(0);
-
-    } catch (error) {
-      toast({
-        title: '❌ Error',
-        description: error instanceof Error ? error.message : 'Failed to get data. Please try again.',
-        status: 'error',
-        duration: 4000,
-        isClosable: true,
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [query, retryCount, responseCache, toast]);
-
-  // Response display component
+  // Enhanced response display component
   const ResponseDisplay = ({ response }: { response: QueryResponse }) => {
     if (!response) return null;
 
+    // Helper function to format pool information
+    const formatPoolResponse = (content: string) => {
+      // Split into sections if it's pool information
+      if (content.includes("Pool Information")) {
+        const [summary, details] = content.split("\n\n");
+        return (
+          <VStack align="stretch" spacing={4}>
+            {/* Summary Section */}
+            <Box>
+              <Text 
+                color="gray.700" 
+                fontSize="md" 
+                whiteSpace="pre-wrap"
+                p={4}
+                bg="blue.50"
+                borderRadius="lg"
+              >
+                {summary}
+              </Text>
+            </Box>
+
+            {/* Detailed Information */}
+            <Box>
+              <Code
+                display="block"
+                whiteSpace="pre-wrap"
+                p={4}
+                borderRadius="lg"
+                bg="gray.50"
+                fontSize="sm"
+                overflowX="auto"
+              >
+                {details}
+              </Code>
+            </Box>
+          </VStack>
+        );
+      }
+
+      // Default formatting for non-pool responses
+      return (
+        <Code
+          display="block"
+          whiteSpace="pre-wrap"
+          p={4}
+          borderRadius="lg"
+          bg={response.status === 'error' ? 'red.50' : 'gray.50'}
+          color={response.status === 'error' ? 'red.600' : 'inherit'}
+          fontSize="sm"
+          overflowX="auto"
+        >
+          {content}
+        </Code>
+      );
+    };
+
     return (
       <Box p={6} borderRadius="xl" bg={bgColor} boxShadow="sm" borderWidth={1} borderColor={borderColor}>
+        {/* Status Badge */}
+        <HStack mb={4}>
+          <Badge
+            colorScheme={
+              response.status === 'success' ? 'green' :
+              response.status === 'needs_info' ? 'yellow' : 'red'
+            }
+            fontSize="sm"
+            px={2}
+            py={1}
+            borderRadius="md"
+          >
+            {response.status.toUpperCase()}
+          </Badge>
+        </HStack>
+
+        {/* Main Response Content */}
         <Box mb={6}>
           <Text fontWeight="bold" color="gray.700" mb={3} fontSize="lg">
-            {response.status === 'needs_info' ? '🤔 I Need More Information:' : 'Here\'s what I found:'}
+            {response.status === 'needs_info' ? '🤔 Additional Information Needed:' :
+             response.status === 'error' ? '❌ Error:' : '💡 Analysis Results:'}
           </Text>
-          <Code
-            display="block"
-            whiteSpace="pre-wrap"
-            p={4}
-            borderRadius="lg"
-            bg={response.status === 'error' ? 'red.50' : 'gray.50'}
-            color={response.status === 'error' ? 'red.600' : 'inherit'}
-            fontSize="sm"
-            overflowX="auto"
-          >
-            {response.status === 'error' 
-              ? response.error 
-              : response.status === 'needs_info'
-              ? response.request
-              : response.final_answer || "No data available"}
-          </Code>
+          {response.status === 'error' ? (
+            <Text color="red.600" p={4} bg="red.50" borderRadius="lg">
+              {response.error_message}
+            </Text>
+          ) : response.status === 'needs_info' ? (
+            <Text color="orange.600" p={4} bg="orange.50" borderRadius="lg">
+              {response.request}
+            </Text>
+          ) : (
+            formatPoolResponse(response.final_answer || "No data available")
+          )}
         </Box>
 
+        {/* Reasoning Section */}
         {response.reasoning && response.status !== 'error' && (
           <>
             <Divider my={4} />
             <Box>
               <Text fontWeight="bold" color="gray.700" mb={2} fontSize="md">
-                💭 My Thought Process:
+                🧠 Reasoning Process:
               </Text>
               <Text 
                 color="gray.600" 
@@ -180,9 +191,90 @@ function App() {
             </Box>
           </>
         )}
+
+        {/* Actions Section */}
+        {response.actions && response.actions.length > 0 && (
+          <>
+            <Divider my={4} />
+            <Box>
+              <Text fontWeight="bold" color="gray.700" mb={2} fontSize="md">
+                🔧 Actions Performed:
+              </Text>
+              <VStack align="stretch" spacing={2}>
+                {response.actions.map((action, index) => (
+                  <Box 
+                    key={index}
+                    p={3}
+                    bg="gray.50"
+                    borderRadius="md"
+                    fontSize="sm"
+                  >
+                    <Text fontWeight="bold">Tool: {action.tool}</Text>
+                    <Text color="gray.600">
+                      Expected Outcome: {action.expected_outcome}
+                    </Text>
+                  </Box>
+                ))}
+              </VStack>
+            </Box>
+          </>
+        )}
       </Box>
     );
   };
+
+  // Enhanced error handling in submit function
+  const handleSubmit = useCallback(async () => {
+    if (!query.trim()) {
+      toast({
+        title: '🤔 Need a Question',
+        description: 'Please ask me something about Sui pools or tokens',
+        status: 'info',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await axios.post<QueryResponse>('http://localhost:3001/api/query', { query });
+      
+      if (result.data.status === 'needs_info') {
+        toast({
+          title: '🤔 Need More Information',
+          description: result.data.request,
+          status: 'warning',
+          duration: 5000,
+          isClosable: true,
+          position: 'top',
+        });
+      } else if (result.data.status === 'error') {
+        toast({
+          title: '❌ Error',
+          description: result.data.error_message || 'An error occurred',
+          status: 'error',
+          duration: 4000,
+          isClosable: true,
+          position: 'top',
+        });
+      }
+
+      setResponse(result.data);
+    } catch (error) {
+      console.error('API Error:', error);
+      toast({
+        title: '❌ Error',
+        description: error instanceof Error ? error.message : 'Failed to get data. Please try again.',
+        status: 'error',
+        duration: 4000,
+        isClosable: true,
+        position: 'top',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [query, toast]);
 
   return (
     <ChakraProvider>

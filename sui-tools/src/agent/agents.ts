@@ -70,55 +70,87 @@ const formatSingleValue = (data: any, field: string, subfield?: string) => {
 
 // Update the prompt template
 const createPricePrompt = (query: string) => `
-I am SuiSage, your friendly Sui blockchain assistant. I help users understand pool metrics and market data in simple terms.
+I am SuiSage, an expert agent specializing in Sui blockchain analytics. I help users understand pool metrics, market data, and token information through careful analysis and clear explanations.
 
-When you ask me about:
-• TVL - I'll show you the total value of assets in the pool
-• APR - I'll explain the annual returns based on trading fees
-• Daily Fees - I'll tell you how much the pool earned in the last 24 hours
-• Pool Info - I'll give you a complete overview of the pool's performance
+**Capabilities:**
+• Pool Information - Complete overview of any pool's performance
+• Token Prices - Current prices and 24h changes for any Sui token
+• Spot Prices - Exchange rates between any two tokens in a pool
+• Pool Metrics:
+  - TVL (Total Value Locked) - Total value of assets in the pool
+  - APR (Annual Percentage Rate) - Yearly returns based on fees
+  - Daily Fees - Trading fees earned in last 24 hours
+  - Token Reserves - Amount of each token in the pool
+• Trading Information:
+  - Best Trading Routes
+  - Price Impact Estimates
+  - Optimal Swap Paths
 
-Available Tools:
+**Reasoning Process:**
+1. Task Analysis: I break down requests into clear sub-problems
+2. Tool Selection: I choose the most appropriate tools for each sub-task
+3. Data Validation: I verify I have all required information
+4. Response Formation: I provide clear, contextualized answers
+
+**Available Tools:**
 ${JSON.stringify(TOOL_DEFINITIONS.price_analysis.tools, null, 2)}
 
-Example Conversations:
-User: "What's the APR of this pool?"
-SuiSage: "Let me check the annual returns for this pool based on its trading activity."
-Response: "\${result.apr}%"
+**Example Interactions:**
 
-User: "Show me the daily fees"
-SuiSage: "I'll look up how much this pool earned in trading fees today."
-Response: "$\${result.fee}"
+1. Complete Information Query:
+User: "What's the APR of pool 0x123...?"
+Reasoning: User wants pool APR, I have the pool ID and required tool
+Action: Use get_pool_info to fetch pool data
+Response: "The pool currently offers an APR of \${result.apr}%"
 
-User: "Tell me about this pool"
-SuiSage: "I'll gather all the important metrics about this pool, including its size, returns, and token reserves."
-Response: "\${result}"
+2. Insufficient Information Query:
+User: "What's the spot price between tokens?"
+Reasoning: Missing pool ID and specific tokens
+Response: {
+  "status": "needs_info",
+  "request": "I need the following information to help you:
+   1. The pool ID you're interested in
+   2. The input token (e.g., SUI, USDC)
+   3. The output token you want to compare with"
+}
 
-Available Coins:
+3. Error Case:
+User: "Get leverage trading info"
+Reasoning: No tools available for leverage trading
+Response: {
+  "status": "error",
+  "error_message": "I apologize, but I don't have access to leverage trading information. I can help with spot prices, pool metrics, and basic trading information."
+}
+
+**Available Tokens:**
 ${Object.entries(COIN_ADDRESSES)
-  .map(([symbol, address]) => `- ${symbol} (${address})`)
+  .map(([symbol, address]) => `• ${symbol.padEnd(8)} ${address}`)
   .join("\n")}
 
 User Query: ${query}
 
-Important: 
-- Explain concepts in simple terms
-- Use friendly, conversational language
-- Focus on what matters to users
-- Avoid technical jargon unless necessary
+**Response Guidelines:**
+• Analyze the query thoroughly using Chain of Thought reasoning
+• Validate all required information is available
+• Request specific missing information if needed
+• Provide context with metrics and explanations
+• Format numbers consistently with proper decimals
+• Include percentage changes where relevant
 
-Provide your response in the following JSON format:
+**Response Format:**
 {
-  "status": "success" | "error" | "requires_info",
-  "reasoning": "Explain what you're checking and why it matters to the user",
+  "status": "success" | "error" | "needs_info",
+  "reasoning": "Detailed explanation of analysis and decision process",
   "actions": [{
     "tool": "tool_name",
     "input": {
       "param1": "value1"
     },
-    "expected_outcome": "What information you'll provide to the user"
+    "expected_outcome": "What information this tool should provide"
   }],
-  "final_answer": "Your clear and friendly response with the data"
+  "request": "Specific information needed from user (if status is needs_info)",
+  "final_answer": "Clear, formatted response with context",
+  "error_message": "Detailed error explanation (if status is error)"
 }`;
 
 // Add a type for the action results
@@ -131,27 +163,43 @@ interface ActionResult {
 const formatPoolInfo = (data: any) => {
   if (!data) return "Pool information not available";
 
-  const tokenNames = data.tokens.map((addr: string) => {
-    const symbol =
-      Object.entries(COIN_ADDRESSES).find(
-        ([_, address]) => address === addr
-      )?.[0] || "Unknown";
-    return symbol;
-  });
+  try {
+    // Format token names
+    const tokenNames = data.tokens.map((addr: string) => {
+      const symbol =
+        Object.entries(COIN_ADDRESSES).find(
+          ([_, address]) => address === addr
+        )?.[0] ||
+        addr.split("::")[2] ||
+        "Unknown";
+      return symbol;
+    });
 
-  const reserves = data.reserves.map((r: string | bigint): string => {
-    const value = Number(r) / 1e9;
-    return value.toLocaleString("en-US", {
+    // Format reserves with proper decimals
+    const reserves = data.reserves.map((r: string | bigint): string => {
+      const value = Number(r) / 1e9; // Convert from Sui decimals
+      return value.toLocaleString("en-US", {
+        maximumFractionDigits: 2,
+      });
+    });
+
+    // Create token-reserve pairs
+    const tokenReservePairs = tokenNames.map(
+      (token: string, i: number) => `${token.padEnd(10)}: ${reserves[i]}`
+    );
+
+    // Format pool metrics
+    const tvl = Number(data.tvl).toLocaleString("en-US", {
       maximumFractionDigits: 2,
     });
-  });
+    const fees = Number(data.fee).toLocaleString("en-US", {
+      maximumFractionDigits: 2,
+    });
+    const apr = Number(data.apr).toLocaleString("en-US", {
+      maximumFractionDigits: 2,
+    });
 
-  const tokenReservePairs = tokenNames.map(
-    (token: string, i: number) =>
-      `${token.padEnd(10)}: ${reserves[i].padStart(12)}`
-  );
-
-  return `Pool Information
+    return `Pool Information
 ================
 ID: ${data.id}
 
@@ -159,15 +207,13 @@ Tokens and Reserves:
 ${tokenReservePairs.join("\n")}
 
 Pool Stats:
-• TVL: $${Number(data.tvl).toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-  })}
-• Daily Fees: $${Number(data.fee).toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-  })}
-• APR: ${Number(data.apr).toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-  })}%`;
+• TVL: $${tvl}
+• Daily Fees: $${fees}
+• APR: ${apr}%`;
+  } catch (error) {
+    console.error("Error formatting pool info:", error);
+    return "Error formatting pool information";
+  }
 };
 
 async function getPriceInfo(query: string) {
@@ -213,7 +259,6 @@ async function getPriceInfo(query: string) {
         console.log(`Executing action: ${action.tool}`);
         console.log("Input parameters:", action.input);
 
-        // Execute the appropriate tool
         let result = null;
         switch (action.tool) {
           case "get_token_price":
@@ -233,6 +278,24 @@ async function getPriceInfo(query: string) {
             break;
           case "get_all_pools":
             result = await getAllPools(action.input.network);
+            // Sort and limit pools for top N query
+            if (query.toLowerCase().includes("top")) {
+              const limit = query.match(/top\s+(\d+)/i)?.[1]
+                ? parseInt(query.match(/top\s+(\d+)/i)![1])
+                : 10;
+
+              const sortField = query.includes("tvl")
+                ? "tvl"
+                : query.includes("fee")
+                ? "fee"
+                : query.includes("apr")
+                ? "apr"
+                : "tvl";
+
+              result = result
+                .sort((a: any, b: any) => b[sortField] - a[sortField])
+                .slice(0, limit);
+            }
             break;
           case "get_pool_spot_price":
             result = await getPoolSpotPrice(
@@ -271,31 +334,77 @@ async function getPriceInfo(query: string) {
         });
       }
 
-      // Format final answer using the results
+      // Format final answer
       let finalAnswer = aiResponse.final_answer;
       if (results.length > 0 && results[0].result) {
         const data = results[0].result as any;
         const action = aiResponse.actions[0];
 
-        // If it's a pool info query, replace the entire result
+        // Handle top pools response
         if (
+          action.tool === "get_all_pools" &&
+          query.toLowerCase().includes("top")
+        ) {
+          const pools = data as any[];
+          finalAnswer =
+            `Here are the top ${pools.length} pools:\n\n` +
+            pools
+              .map(
+                (pool, index) =>
+                  `${index + 1}. Pool ${pool.id.slice(0, 8)}...${pool.id.slice(
+                    -8
+                  )}\n` +
+                  `   • TVL: $${Number(pool.tvl).toLocaleString("en-US", {
+                    maximumFractionDigits: 2,
+                  })}\n` +
+                  `   • Daily Fees: $${Number(pool.fee).toLocaleString(
+                    "en-US",
+                    { maximumFractionDigits: 2 }
+                  )}\n` +
+                  `   • APR: ${Number(pool.apr).toLocaleString("en-US", {
+                    maximumFractionDigits: 2,
+                  })}%`
+              )
+              .join("\n\n");
+        }
+        // If it's a pool info query, replace the entire result
+        else if (
           action.tool === "get_pool_info" &&
           (finalAnswer.includes("${result}") ||
             finalAnswer === "Pool Information: No data available")
         ) {
-          const summary = `This pool has a Total Value Locked (TVL) of $${Number(
-            data.tvl
-          ).toLocaleString("en-US", {
-            maximumFractionDigits: 2,
-          })}, generates $${Number(data.fee).toLocaleString("en-US", {
-            maximumFractionDigits: 2,
-          })} in daily fees, and offers an APR of ${Number(
-            data.apr
-          ).toLocaleString("en-US", {
-            maximumFractionDigits: 2,
-          })}%.`;
+          try {
+            const tvl = Number(data.tvl).toLocaleString("en-US", {
+              maximumFractionDigits: 2,
+            });
+            const fees = Number(data.fee).toLocaleString("en-US", {
+              maximumFractionDigits: 2,
+            });
+            const apr = Number(data.apr).toLocaleString("en-US", {
+              maximumFractionDigits: 2,
+            });
 
-          finalAnswer = `${summary}\n\n${formatPoolInfo(data)}`;
+            const summary = `This pool has a Total Value Locked (TVL) of $${tvl}, generates $${fees} in daily fees, and offers an APR of ${apr}%.`;
+
+            // Get token information
+            const tokenInfo = data.tokens
+              .map((addr: string) => {
+                const symbol =
+                  Object.entries(COIN_ADDRESSES).find(
+                    ([_, address]) => address === addr
+                  )?.[0] ||
+                  addr.split("::")[2] ||
+                  "Unknown";
+                return symbol;
+              })
+              .join(", ");
+
+            const fullSummary = `${summary}\nThe pool contains the following tokens: ${tokenInfo}`;
+            finalAnswer = `${fullSummary}\n\n${formatPoolInfo(data)}`;
+          } catch (error) {
+            console.error("Error formatting pool response:", error);
+            finalAnswer = "Error processing pool information";
+          }
         }
         // Add special handling for spot price
         else if (action.tool === "get_pool_spot_price") {
@@ -399,7 +508,8 @@ async function getPriceInfo(query: string) {
     console.error("Error:", error);
     return {
       status: "error",
-      error: error instanceof Error ? error.message : "Unknown error occurred",
+      error_message:
+        error instanceof Error ? error.message : "Unknown error occurred",
     };
   }
 }
@@ -408,19 +518,19 @@ async function getPriceInfo(query: string) {
 async function main() {
   // Test different queries
   const queries = [
-    "Get me the prices of SUI and USDC",
-    "Show me the current prices of SUI, USDC, and BTC",
-    "Get information about pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
-    "Get fees for pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78",
+    "Get me the prices of SUI",
+    // "Show me the current prices of SUI, USDC, and BTC",
+    // "Get information about pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
+    // "Get fees for pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78",
     "What's the spot price between afSUI and ksui in pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
-    "What are the top pools by tvl?",
-    "What are the top pools by fees?",
-    "What are the top pools by apr?",
-    "What are the top pools by volume?",
-    "What are the top pools by liquidity?",
-    "What are the top pools by reserves?",
-    "What are the top pools by token?",
-    "What are the top pools by token?",
+    "What are the top 10 pools by tvl?",
+    // "What are the top pools by fees?",
+    // "What are the top pools by apr?",
+    // "What are the top pools by volume?",
+    // "What are the top pools by liquidity?",
+    // "What are the top pools by reserves?",
+    // "What are the top pools by token?",
+    // "What are the top pools by token?",
   ];
 
   for (const query of queries) {

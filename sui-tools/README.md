@@ -1,138 +1,133 @@
-# Sui Tools
+# SuiSage - Sui Blockchain Analytics Assistant
 
-A TypeScript library for interacting with Sui blockchain and DeFi protocols.
+SuiSage is an AI-powered assistant that helps users analyze and understand Sui blockchain data through natural language queries. It provides insights about pools, tokens, and market metrics in a user-friendly way.
 
 ## Features
 
-- **Wallet Management**: Create, import, and manage Sui wallets
-- **Price Monitoring**: Real-time price tracking and alerts for Sui tokens
-- **DeFi Integration**: Interact with Aftermath Finance and other DeFi protocols
-- **Transaction Management**: Build and execute transactions on Sui
-- **Rate Calculations**: APR/APY calculations and lending rate utilities
+### Pool Analytics
 
-## Installation
+- Total Value Locked (TVL)
+- Annual Percentage Rate (APR)
+- Daily Trading Fees
+- Token Reserves
+- Pool Rankings
+
+### Token Information
+
+- Real-time Token Prices
+- 24h Price Changes
+- Spot Price Between Tokens
+- Multi-token Price Comparisons
+
+### Market Analysis
+
+- Top Pools by Different Metrics
+- Trading Routes
+- Price Impact Analysis
+
+## Setup
+
+### Prerequisites
+
+- Node.js (v16 or higher)
+- npm or yarn
+- Atoma SDK Bearer Token
+
+### Installation
+
+1. Clone and install dependencies:
 
 ```bash
-npm install sui-tools
+git clone <repository-url>
+cd sui-tools
+npm install
+
+# Install frontend dependencies
+cd frontend
+npm install
 ```
 
-## Quick Start
+2. Configure environment variables:
 
-### Wallet Operations
+Create `.env` in root directory:
 
-```typescript
-import { SuiWallet } from "sui-tools/wallets";
-import { initSuiClient } from "sui-tools/transactions";
-
-// Initialize client
-const client = initSuiClient("MAINNET");
-
-// Generate new wallet
-const wallet = SuiWallet.generate(client);
-console.log("Wallet address:", wallet.address);
-
-// Import from private key
-const importedWallet = SuiWallet.fromPrivateKey(client, "your-private-key");
-
-// Transfer tokens
-await wallet.transfer({
-  to: "recipient-address",
-  amount: BigInt(1_000_000), // 0.001 SUI
-  tokenType: "0x2::sui::SUI", // optional, defaults to SUI
-});
-
-// Sign and send custom transaction
-const txb = new TransactionBlock();
-// ... add transaction operations
-const result = await wallet.sendTransaction(txb);
-console.log("Transaction hash:", result.hash);
+```
+ATOMASDK_BEARER_AUTH=your_atoma_sdk_token
 ```
 
-### Price Monitoring
+Create `.env` in frontend directory:
 
-```typescript
-import { PriceMonitor } from "sui-tools/monitors";
-
-// Initialize price monitor
-const monitor = new PriceMonitor("MAINNET");
-
-// Track SUI token price
-await monitor.init(["0x2::sui::SUI"]);
-
-// Set price alert
-monitor.setPriceAlert(
-  "0x2::sui::SUI",
-  2.0, // Alert when price > $2
-  true,
-  (price) => console.log(`Alert: SUI price reached $${price}`)
-);
+```
+SKIP_PREFLIGHT_CHECK=true
 ```
 
-### DeFi Operations
+## Running the Application
 
-```typescript
-import { AftermathClient } from "sui-tools/aftermath";
+1. Start the backend server:
 
-// Initialize Aftermath client
-const client = new AftermathClient("MAINNET");
-await client.init();
-
-// Get pool information
-const pool = await client.getPool("pool_id");
-console.log("Pool TVL:", pool.tvl);
-console.log("Pool APY:", pool.apy);
+```bash
+# From frontend directory
+npm run server
 ```
 
-### Rate Calculations
+This starts the Express server on port 3001
 
-```typescript
-import { RatesManager } from "sui-tools/rates";
+2. Start the frontend application:
 
-const ratesManager = new RatesManager("MAINNET");
-
-// Convert APR to APY
-const apy = ratesManager.aprToApy(0.05); // 5% APR
-console.log(`APY: ${apy}%`);
-
-// Calculate impermanent loss
-const il = ratesManager.calculateImpermanentLoss(1000, 1200, 0.1);
-console.log(`Impermanent Loss: ${il}%`);
+```bash
+# From frontend directory
+npm start
 ```
 
-## API Documentation
+This launches the React application on port 3000
 
-### SuiWallet
+The application will be available at:
 
-```typescript
-class SuiWallet {
-  // Create/import wallets
-  static generate(client: SuiClient): SuiWallet;
-  static fromPrivateKey(client: SuiClient, privateKey: string): SuiWallet;
-  static fromMnemonic(client: SuiClient, mnemonic: string): SuiWallet;
+- Frontend UI: http://localhost:3000
+- Backend API: http://localhost:3001
 
-  // Properties
-  get address(): string;
+## Usage Examples
 
-  // Methods
-  async transfer(params: {
-    to: string;
-    amount: bigint;
-    tokenType?: string;
-  }): Promise<TransactionResult>;
+You can ask SuiSage questions like:
 
-  async sendTransaction(txb: TransactionBlock): Promise<{
-    hash: string;
-    result: any;
-    wait: () => Promise<any>;
-    getTransaction: () => Promise<any>;
-  }>;
+- "What's the TVL of pool 0x123...?"
+- "Show me the current price of SUI"
+- "What are the top 10 pools by TVL?"
+- "What's the spot price between SUI and USDC?"
 
-  signMessage(message: string): string;
-}
+## Project Structure
+
+```
+sui-tools/
+├── src/               # Backend source code
+│   ├── agent/        # AI agent and tools
+│   ├── markets/      # Market data analysis
+│   ├── common/       # Shared types and config
+│   └── yields/       # Yield calculations
+└── frontend/         # Frontend application
+    ├── src/          # React components
+    └── server.ts     # Express server
 ```
 
-For more detailed examples and API documentation, check the `examples` directory in the source code.
+## Error Handling
+
+The application includes:
+
+- Input validation
+- Network timeout handling
+- User-friendly error messages
+- Detailed error logging
+
+## Support
+
+For issues or questions:
+
+1. Check existing GitHub issues
+2. Create a new issue with:
+   - Query used
+   - Expected vs actual result
+   - Error messages (if any)
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details
