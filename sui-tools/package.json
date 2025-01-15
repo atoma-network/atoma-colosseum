@@ -4,7 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node src/agent/agents.ts",
+    "start": "ts-node src/server.ts",
+    "build": "tsc",
+    "dev": "ts-node src/agent/agents.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
