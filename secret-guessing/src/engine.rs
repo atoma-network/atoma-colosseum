@@ -3,6 +3,7 @@ use crate::{
     client::{SuiClientContext, SuiClientError},
     config::SecretGuessingConfig,
     generate_secret::{generate_new_secret, GenerateSecretError},
+    twitter::TwitterClient,
     SECRET_GUESSING_MODULE_NAME,
 };
 use events::{
@@ -58,6 +59,9 @@ pub struct GuessAiEngine {
     /// The Sui client context for the current Secret Guessing game
     pub sui_client_ctx: SuiClientContext,
 
+    /// The Twitter client for the current Secret Guessing game
+    pub twitter_client: TwitterClient,
+
     /// Channel receiver for shutdown signals to gracefully stop the subscriber
     pub shutdown_signal: Receiver<bool>,
 }
@@ -91,6 +95,13 @@ impl GuessAiEngine {
         )
         .await?;
 
+        let twitter_client = TwitterClient::new(
+            config.twitter_consumer_key.clone(),
+            config.twitter_consumer_secret.clone(),
+            config.twitter_access_token.clone(),
+            config.twitter_access_token_secret.clone(),
+        );
+
         Ok(Self {
             atoma_sdk,
             client_private_key,
@@ -99,6 +110,7 @@ impl GuessAiEngine {
             random_seed,
             secret,
             sui_client_ctx,
+            twitter_client,
             shutdown_signal,
         })
     }

@@ -9,6 +9,7 @@ anyhow = "1.0.95"
 base64 = "0.22.1"
 blake2 = "0.10.6"
 dcap-rs = { git = "https://github.com/automata-network/dcap-rs.git" }
+egg-mode = "0.16.1"
 fastcrypto = "0.1.9"
 hkdf = "0.12.4"
 rand = "0.8.5"

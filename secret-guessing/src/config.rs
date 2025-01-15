@@ -6,6 +6,18 @@ pub struct SecretGuessingConfig {
     /// API key for Atoma service authentication
     pub atoma_api_key: String,
 
+    /// Twitter consumer key
+    pub twitter_consumer_key: String,
+
+    /// Twitter consumer secret
+    pub twitter_consumer_secret: String,
+
+    /// Twitter access token
+    pub twitter_access_token: String,
+
+    /// Twitter access token secret
+    pub twitter_access_token_secret: String,
+
     /// File path for storing cursor information
     pub cursor_path: String,
 
