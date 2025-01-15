@@ -21,3 +21,4 @@ services:
     envVars:
       - key: ATOMASDK_BEARER_AUTH
         sync: false
+        value: iod6OeQGNsqBAOOiNyiHxWGrfXCotc
