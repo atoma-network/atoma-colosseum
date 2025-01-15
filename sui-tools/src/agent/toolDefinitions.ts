@@ -65,7 +65,7 @@ export const TOOL_DEFINITIONS = {
       {
         name: "get_pool_info",
         description:
-          "Retrieves detailed information about a specific liquidity pool",
+          "Get detailed information about a liquidity pool including reserves, TVL, APR, and daily fees",
         inputs: [
           {
             name: "pool_id",
@@ -82,7 +82,8 @@ export const TOOL_DEFINITIONS = {
         ],
         output: {
           type: "object",
-          description: "Pool information including tokens, reserves, fees, TVL",
+          description:
+            "Pool information including tokens, reserves, fees, TVL, and APR",
         },
       },
       {
@@ -134,15 +135,102 @@ export const TOOL_DEFINITIONS = {
           description: "Spot price of the pool",
         },
       },
+      {
+        name: "get_trade_route",
+        description: "Gets optimal trade route between two tokens",
+        inputs: [
+          {
+            name: "coin_in_type",
+            type: "string",
+            description: "Input token address",
+          },
+          {
+            name: "coin_out_type",
+            type: "string",
+            description: "Output token address",
+          },
+          {
+            name: "coin_in_amount",
+            type: "string",
+            description: "Amount of input token (in smallest units)",
+          },
+          {
+            name: "network",
+            type: "string",
+            description: "Optional network override (MAINNET | TESTNET)",
+            optional: true,
+            default: "MAINNET",
+          },
+        ],
+        output: {
+          type: "object",
+          description: "Trade route information",
+          schema: {
+            route: "string[]",
+            estimated_cost: "number",
+          },
+        },
+      },
+      {
+        name: "get_staking_positions",
+        description: "Gets staking positions for a wallet",
+        inputs: [
+          {
+            name: "wallet_address",
+            type: "string",
+            description: "Address of the wallet to query",
+          },
+          {
+            name: "network",
+            type: "string",
+            description: "Optional network override (MAINNET | TESTNET)",
+            optional: true,
+            default: "MAINNET",
+          },
+        ],
+        output: {
+          type: "object",
+          description: "Staking positions for the wallet",
+          schema: {
+            positions: "string[]",
+          },
+        },
+      },
+      {
+        name: "get_dca_orders",
+        description: "Gets DCA (Dollar Cost Average) orders for a wallet",
+        inputs: [
+          {
+            name: "wallet_address",
+            type: "string",
+            description: "Address of the wallet to query",
+          },
+          {
+            name: "network",
+            type: "string",
+            description: "Optional network override (MAINNET | TESTNET)",
+            optional: true,
+            default: "MAINNET",
+          },
+        ],
+        output: {
+          type: "object",
+          description: "DCA orders for the wallet",
+          schema: {
+            orders: "string[]",
+          },
+        },
+        final_answer_template: "DCA Orders for wallet:\n${result}",
+      },
     ],
   },
   yield_analysis: {
     name: "yield_analysis",
-    description: "Tools for analyzing yields and APY calculations",
+    description: "Tools for analyzing yields and APR calculations",
     tools: [
       {
-        name: "get_pool_apy",
-        description: "Fetches and calculates the APY for a specific pool",
+        name: "get_pool_apr",
+        description: "Fetches and calculates the APR for a specific pool",
         inputs: [
           {
             name: "pool_id",
@@ -159,7 +247,7 @@ export const TOOL_DEFINITIONS = {
         ],
         output: {
           type: "number",
-          description: "Pool's APY as a percentage",
+          description: "Pool's APR as a percentage",
         },
       },
       {

@@ -7,7 +7,8 @@
     "start": "ts-node src/agent/agents.ts",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "deploy": "render deploy"
   },
   "keywords": [],
   "author": "",

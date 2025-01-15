@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: suisage-frontend
+    env: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: ./frontend/build
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          name: suisage-backend
+          type: web
+          property: url
+
+  - type: web
+    name: suisage-backend
+    env: node
+    buildCommand: npm install
+    startCommand: npm run start
+    envVars:
+      - key: ATOMASDK_BEARER_AUTH
+        sync: false

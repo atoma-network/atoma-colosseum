@@ -172,6 +172,13 @@ export async function getCoinsPriceInfo(
  */
 async function processPool(pool: any, poolId: string): Promise<PoolInfo> {
   try {
+    // Get pool metrics from Aftermath API
+    const aftermath = await initAftermath();
+    const metrics = await aftermath
+      .Pools()
+      .getPoolsStats({ poolIds: [poolId] });
+    const poolMetrics = metrics[0]; // Get first pool's metrics since we query for specific poolId
+
     // Extract coin types and their reserves
     const tokens = Object.keys(pool.pool.coins || {});
     const reserves = tokens.map((token) => {
@@ -183,19 +190,20 @@ async function processPool(pool: any, poolId: string): Promise<PoolInfo> {
       id: poolId,
       tokens,
       reserves,
-      fee: Number(pool.pool.flatness || 0) / 1e9,
-      tvl: Number(pool.pool.lpCoinSupply || 0) / 1e9,
-      apy: 0,
+      fee: poolMetrics?.fees || 0,
+      tvl: poolMetrics?.tvl || 0,
+      apr: (poolMetrics?.apr || 0) * 100, // Convert to percentage
     };
   } catch (error) {
     console.error(`Error processing pool ${poolId}:`, error);
+    // console.error('Pool metrics:', metrics); // Add this for debugging
     return {
       id: poolId,
       tokens: [],
       reserves: [],
       fee: 0,
       tvl: 0,
-      apy: 0,
+      apr: 0,
     };
   }
 }
@@ -364,4 +372,29 @@ export async function getDcaOrders(
   const aftermath = await initAftermath(network);
   const dca = aftermath.Dca();
   return dca.getActiveDcaOrders({ walletAddress });
+}
+
+function calculatePoolApr(pool: any): number {
+  try {
+    // Get volume and TVL
+    const volume24h = Number(pool.pool.volume24h || 0) / 1e9;
+    const tvl = Number(pool.pool.lpCoinSupply || 0) / 1e9;
+
+    if (tvl === 0) return 0;
+
+    // Calculate fee revenue
+    const feeRate = Number(pool.pool.flatness || 0) / 1e9;
+    const feeRevenue24h = volume24h * feeRate;
+
+    // Annualize the daily revenue
+    const annualRevenue = feeRevenue24h * 365;
+
+    // Calculate APR: (Annual Revenue / TVL) * 100
+    const apr = (annualRevenue / tvl) * 100;
+
+    return apr;
+  } catch (error) {
+    console.error("Error calculating pool APR:", error);
+    return 0;
+  }
 }

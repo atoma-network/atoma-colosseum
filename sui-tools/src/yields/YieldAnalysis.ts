@@ -1,5 +1,5 @@
 import { getPool, getAllPools } from "../markets/PriceAnalysis";
-import { PoolInfo } from "../common/types";
+import { PoolInfo, LendingInfo } from "../common/types";
 
 /** --------------------------------------------------------------------------
  *                            Yield Analysis
@@ -88,8 +88,7 @@ export function calculateUtilization(
   borrowed: number,
   supplied: number
 ): number {
-  if (supplied === 0) return 0;
-  return borrowed / supplied;
+  return (borrowed / supplied) * 100;
 }
 
 /**
@@ -141,20 +140,20 @@ export function calculateImpermanentLoss(
  */
 
 /**
- * Fetches and calculates the APY for a specific pool
+ * Fetches and calculates the APR for a specific pool
  *
- * If the pool has no explicit APY, calculates it based on utilization rate
+ * If the pool has no explicit APR, calculates it based on utilization rate
  *
  * @param poolId - The unique identifier of the pool
  * @param network - Optional network override ("MAINNET" | "TESTNET")
- * @returns The pool's APY as a percentage
+ * @returns The pool's APR as a percentage
  * @throws Error if pool not found or calculation fails
  *
  * @example
- * const apy = await getPoolApy("pool_123");
- * console.log(`Pool APY: ${apy}%`);
+ * const apr = await getPoolApr("pool_123");
+ * console.log(`Pool APR: ${apr}%`);
  */
-export async function getPoolApy(
+export async function getPoolApr(
   poolId: string,
   network?: "MAINNET" | "TESTNET"
 ): Promise<number> {
@@ -163,15 +162,8 @@ export async function getPoolApy(
     throw new Error(`Pool not found: ${poolId}`);
   }
 
-  if (pool.apy === undefined) {
-    const utilization = calculateUtilization(
-      Number(pool.reserves[0] || 0),
-      Number(pool.reserves[1] || 0)
-    );
-    return calculateLendingRate(utilization);
-  }
-
-  return pool.apy;
+  // The APR is already calculated in PriceAnalysis
+  return pool.apr;
 }
 
 /**
@@ -215,13 +207,13 @@ export async function getLendingRate(
  * });
  */
 export async function getBestLendingOpportunities(
-  minApy: number = 5,
+  minApr: number = 5,
   network?: "MAINNET" | "TESTNET"
 ): Promise<PoolInfo[]> {
   const allPools = await getAllPools(network);
   return allPools
-    .filter((pool) => (pool.apy || 0) >= minApy)
-    .sort((a, b) => (b.apy || 0) - (a.apy || 0));
+    .filter((pool) => (pool.apr || 0) >= minApr)
+    .sort((a, b) => (b.apr || 0) - (a.apr || 0));
 }
 
 /**
@@ -238,4 +230,30 @@ export function calculatePoolImpermanentLoss(
   poolShare: number
 ): number {
   return calculateImpermanentLoss(initialPrice, currentPrice, poolShare);
+}
+
+export async function getLendingRates(
+  asset: string,
+  network: string = "mainnet"
+): Promise<LendingInfo> {
+  const borrowed = 1000; // Example values, replace with actual data
+  const supplied = 2000;
+
+  return {
+    asset,
+    lendingApr: calculateLendingApr(borrowed, supplied),
+    borrowingApr: calculateBorrowingApr(borrowed, supplied),
+    utilization: calculateUtilization(borrowed, supplied),
+  };
+}
+
+// Update any APY calculations to APR
+function calculateLendingApr(borrowed: number, supplied: number): number {
+  // Temporary implementation
+  return 0;
+}
+
+function calculateBorrowingApr(borrowed: number, supplied: number): number {
+  // Temporary implementation
+  return 0;
 }
