@@ -399,7 +399,7 @@ impl GuessAiEngine {
             "RotateTdxQuoteEvent for epoch: {epoch}"
         );
         let generate_secret_prompt = prompts::create_secret_prompt();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rngs::OsRng::default();
         let client_private_key = StaticSecret::random_from_rng(&mut rng);
         let secret = generate_new_secret(
             &self.atoma_sdk,
@@ -629,8 +629,12 @@ pub enum GuessAiEngineError {
     SuiClientError(#[from] SuiClientError),
     #[error("Failed to generate secret: {0}")]
     GenerateSecretError(#[from] GenerateSecretError),
+    #[error("Failed to send shutdown signal: {0}")]
+    ShutdownError(#[from] tokio::sync::watch::error::SendError<bool>),
     #[error("Failed to create wallet context: {0}")]
     WalletContextError(#[from] anyhow::Error),
+    #[error("Join error: {0}")]
+    JoinError(#[from] tokio::task::JoinError),
 }
 
 pub(crate) mod events {

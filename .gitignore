@@ -1,2 +1,3 @@
 guess-ai/target/
 .env
+config.toml

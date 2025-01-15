@@ -9,6 +9,8 @@ use guess_ai::{
     engine::{GuessAiEngine, GuessAiEngineError, Result},
 };
 use sui_sdk::{types::base_types::ObjectID, wallet_context::WalletContext};
+use tokio::task::JoinHandle;
+use tracing::{error, info, instrument};
 use tracing_subscriber::EnvFilter;
 
 /// Command line arguments for the Guess AI
@@ -41,10 +43,77 @@ async fn main() -> Result<()> {
     let wallet_context = WalletContext::new(config_path, request_timeout, max_concurrent_requests)?;
     let sui_client_ctx = SuiClientContext::new(guess_ai_db, guess_ai_package_id, wallet_context);
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let engine = GuessAiEngine::new(atoma_sdk, config, sui_client_ctx, shutdown_rx).await?;
+    let engine = GuessAiEngine::new(atoma_sdk, config, sui_client_ctx, shutdown_rx.clone()).await?;
+
+    let ctrl_c = trigger_shutdown_on_ctrl_c(shutdown_tx, shutdown_rx);
+
     let join_handle = tokio::spawn(async move {
         engine.run().await?;
         Ok::<(), GuessAiEngineError>(())
     });
+
+    let (guess_ai_result, ctrl_c_result) = tokio::try_join!(join_handle, ctrl_c)?;
+    handle_tasks_results(guess_ai_result, ctrl_c_result)?;
+
+    info!(
+        target = "guess-ai-service",
+        event = "guess-ai-stop",
+        message = "Guess AI service shut down successfully"
+    );
+
+    Ok(())
+}
+
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(
+        event = "guess-ai-stop",
+        message = "ctrl-c received, sending shutdown signal"
+    )
+)]
+fn trigger_shutdown_on_ctrl_c(
+    shutdown_tx: tokio::sync::watch::Sender<bool>,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) -> JoinHandle<Result<()>> {
+    tokio::task::spawn(async move {
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {
+                info!(
+                    target = "guess-ai-service",
+                    event = "guess-ai-stop",
+                    "ctrl-c received, sending shutdown signal"
+                );
+                shutdown_tx
+                    .send(true)?;
+                Ok::<(), GuessAiEngineError>(())
+            }
+            _ = shutdown_rx.changed() => {
+                Ok::<(), GuessAiEngineError>(())
+            }
+        }
+    })
+}
+
+#[instrument(
+    level = "info",
+    skip_all,
+    fields(event = "guess-ai-stop", message = "guess-ai-stop")
+)]
+fn handle_tasks_results(guess_ai_result: Result<()>, ctrl_c_result: Result<()>) -> Result<()> {
+    let result_handler = |result: Result<()>, message: &str| {
+        if let Err(e) = result {
+            error!(
+                target = "atoma-node-service",
+                event = "atoma_node_service_shutdown",
+                error = ?e,
+                "{message}"
+            );
+            return Err(e);
+        }
+        Ok(())
+    };
+    result_handler(guess_ai_result, "Guess AI terminated abruptly")?;
+    result_handler(ctrl_c_result, "Ctrl-C received")?;
     Ok(())
 }
