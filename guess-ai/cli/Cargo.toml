@@ -1,0 +1,23 @@
+[package]
+name = "guess-ai-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.95"
+axum = "0.8.1"
+clap = "4.5.26"
+config = "0.15.6"
+dotenv = "0.15.0"
+fastcrypto = "0.1.9"
+rand = "0.8.5"
+serde = "1.0.204"
+serde_json = "1.0.135"
+sui-keys = { git = "https://github.com/mystenlabs/sui", package = "sui-keys", tag = "testnet-v1.39.3" }
+sui-sdk = { git = "https://github.com/mystenlabs/sui", package = "sui-sdk", tag = "testnet-v1.39.3" }
+# tdx = { git = "https://github.com/automata-network/tdx-attestation-sdk.git", branch = "main" }
+thiserror = "2.0.9"
+tokio = { version = "1.42.0", features = ["full"] }
+toml = "0.8.19"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }

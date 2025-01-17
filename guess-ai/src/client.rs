@@ -52,6 +52,28 @@ impl SuiClientContext {
         }
     }
 
+    /// Submits a node's public key and TDX attestation to the GuessAI game smart contract.
+    ///
+    /// This method executes a Move call to register or update a node's public key and TDX attestation
+    /// in the Secret Guessing game's database.
+    ///
+    /// # Arguments
+    ///
+    /// * `public_key` - The x25519 public key of the node
+    /// * `tdx_quote_bytes` - The TDX attestation quote bytes
+    /// * `gas` - Optional ObjectID to use for gas payment. If None, the system will select an appropriate gas object
+    /// * `gas_budget` - Optional gas budget for the transaction. Defaults to 50,000,000 (0.05 SUI) if None
+    /// * `gas_price` - Optional gas price for the transaction. If None, the system will use the network's reference price
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result<String>` containing the transaction digest if successful, or a `SuiClientError` if the operation fails
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The wallet context fails to get the active address
+    /// * The transaction execution fails
     #[instrument(
         level = "info",
         skip_all,
