@@ -1,3 +1,29 @@
+// First, let's define proper types for tool inputs
+interface BaseToolInput {
+  name: string;
+  type: string;
+  description: string;
+  optional?: boolean;
+}
+
+interface StringToolInput extends BaseToolInput {
+  type: "string";
+  default?: string;
+}
+
+interface NumberToolInput extends BaseToolInput {
+  type: "number";
+  default?: number;
+}
+
+interface BooleanToolInput extends BaseToolInput {
+  type: "boolean";
+  default?: boolean;
+}
+
+type ToolInput = StringToolInput | NumberToolInput | BooleanToolInput;
+
+// Update the tool definitions
 export const TOOL_DEFINITIONS = {
   price_analysis: {
     name: "price_analysis",
@@ -88,16 +114,24 @@ export const TOOL_DEFINITIONS = {
       },
       {
         name: "get_all_pools",
-        description: "Fetches information about all available liquidity pools",
+        description:
+          "Get pool information sorted by specified metric (tvl, apr, fees). Default limit is 10 pools.",
         inputs: [
           {
-            name: "network",
-            type: "string",
-            description: "Network to query ('MAINNET' or 'TESTNET')",
+            name: "sort_by",
+            type: "string" as const,
+            description: "Metric to sort by: 'tvl', 'apr', or 'fees'",
             optional: true,
-            default: "MAINNET",
+            default: "tvl",
           },
-        ],
+          {
+            name: "limit",
+            type: "number" as const,
+            description: "Number of pools to return",
+            optional: true,
+            default: 10,
+          },
+        ] as ToolInput[],
         output: {
           type: "array",
           description: "Array of pool information",
@@ -338,4 +372,13 @@ export const TOOL_DEFINITIONS = {
       },
     ],
   },
+};
+
+// Export the types
+export type {
+  ToolInput,
+  BaseToolInput,
+  StringToolInput,
+  NumberToolInput,
+  BooleanToolInput,
 };
