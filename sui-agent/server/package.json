@@ -1,0 +1,31 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server",
+    "server": "ts-node src/server.ts"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.18.0",
+    "@mysten/sui.js": "^0.54.1",
+    "@types/cors": "^2.8.17",
+    "aftermath-ts-sdk": "latest",
+    "atoma-sdk": "github:atoma-network/atoma-sdk-typescript",
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "events": "^3.3.0",
+    "express": "^4.21.2",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/express": "^5.0.0"
+  }
+}
