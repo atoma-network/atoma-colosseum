@@ -1,9 +1,5 @@
 use anyhow::Result;
-use sui_sdk::{
-    json::SuiJsonValue,
-    types::base_types::{ObjectID, SuiAddress},
-    wallet_context::WalletContext,
-};
+use sui_sdk::{json::SuiJsonValue, types::base_types::ObjectID, wallet_context::WalletContext};
 use tracing::{info, instrument};
 
 /// The Atoma contract db module name.
@@ -62,6 +58,19 @@ impl SuiClientContext {
         }
     }
 
+    /// Sets the fee rate increase per guess per mille.
+    ///
+    /// # Arguments
+    /// * `fee_rate_increase_per_guess_per_mille` - The fee rate increase per guess per mille
+    /// * `gas` - Optional gas object ID to use for the transaction
+    /// * `gas_budget` - Optional gas budget for the transaction (defaults to GAS_BUDGET)
+    /// * `gas_price` - Optional gas price for the transaction
+    ///
+    /// # Returns
+    /// * `Result<String>` - The transaction digest if successful, or an error if the transaction fails
+    ///
+    /// # Example
+    /// ```rust,ignore
     #[instrument(
         level = "info",
         name = "set_fee_rate_increase_per_guess_per_mille",
@@ -114,6 +123,20 @@ impl SuiClientContext {
         Ok(response.digest.to_string())
     }
 
+    /// Sets the game inactive.
+    ///
+    /// # Arguments
+    /// * `gas` - Optional gas object ID to use for the transaction
+    /// * `gas_budget` - Optional gas budget for the transaction (defaults to GAS_BUDGET)
+    /// * `gas_price` - Optional gas price for the transaction
+    ///
+    /// # Returns
+    /// * `Result<String>` - The transaction digest if successful, or an error if the transaction fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let tx_digest = client.set_game_inactive(None, None, None).await?;
+    /// ```
     #[instrument(
         level = "info",
         name = "set_game_inactive",
@@ -164,6 +187,21 @@ impl SuiClientContext {
         Ok(response.digest.to_string())
     }
 
+    /// Sets the agent address for the GuessAI game.
+    ///
+    /// # Arguments
+    /// * `agent_address` - The address of the agent
+    /// * `gas` - Optional gas object ID to use for the transaction
+    /// * `gas_budget` - Optional gas budget for the transaction (defaults to GAS_BUDGET)
+    /// * `gas_price` - Optional gas price for the transaction
+    ///
+    /// # Returns
+    /// * `Result<String>` - The transaction digest if successful, or an error if the transaction fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let tx_digest = client.set_agent_address(agent_address, None, None, None).await?;
+    /// ```
     #[instrument(
         level = "info",
         name = "set_agent_address",
@@ -174,7 +212,7 @@ impl SuiClientContext {
     )]
     pub async fn set_agent_address(
         &mut self,
-        agent_address: SuiAddress,
+        agent_address: String,
         gas: Option<ObjectID>,
         gas_budget: Option<u64>,
         gas_price: Option<u64>,
@@ -193,7 +231,7 @@ impl SuiClientContext {
                 vec![
                     SuiJsonValue::from_object_id(self.guess_ai_db),
                     SuiJsonValue::from_object_id(self.guess_ai_manager_id),
-                    SuiJsonValue::new(agent_address.to_string().into())?,
+                    SuiJsonValue::new(agent_address.into())?,
                 ],
                 gas,
                 gas_budget.unwrap_or(GAS_BUDGET),
@@ -216,9 +254,24 @@ impl SuiClientContext {
         Ok(response.digest.to_string())
     }
 
+    /// Sets the starting fee for the GuessAI game.     
+    ///
+    /// # Arguments
+    /// * `starting_fee` - The starting fee for the game
+    /// * `gas` - Optional gas object ID to use for the transaction
+    /// * `gas_budget` - Optional gas budget for the transaction (defaults to GAS_BUDGET)
+    /// * `gas_price` - Optional gas price for the transaction
+    ///
+    /// # Returns
+    /// * `Result<String>` - The transaction digest if successful, or an error if the transaction fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let tx_digest = client.set_starting_fee(100, None, None, None).await?;
+    /// ```
     #[instrument(
         level = "info",
-        name = "rotate_tdx_quote",
+        name = "set_starting_fee",
         skip_all,
         fields(
             active_address = %self.wallet_context.active_address()?,
@@ -268,6 +321,21 @@ impl SuiClientContext {
         Ok(response.digest.to_string())
     }
 
+    /// Sets the fee update interval in guesses for the GuessAI game.
+    ///
+    /// # Arguments
+    /// * `update_fee_every_n_guesses` - The number of guesses between fee updates
+    /// * `gas` - Optional gas object ID to use for the transaction
+    /// * `gas_budget` - Optional gas budget for the transaction (defaults to GAS_BUDGET)
+    /// * `gas_price` - Optional gas price for the transaction
+    ///
+    /// # Returns
+    /// * `Result<String>` - The transaction digest if successful, or an error if the transaction fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let tx_digest = client.set_update_fee_every_n_guesses(100, None, None, None).await?;
+    /// ```
     #[instrument(
         level = "info",
         name = "set_update_fee_every_n_guesses",
@@ -320,6 +388,21 @@ impl SuiClientContext {
         Ok(response.digest.to_string())
     }
 
+    /// Sets the protocol fee rate in per mille (parts per thousand) for the GuessAI game.
+    ///
+    /// # Arguments
+    /// * `protocol_fee_per_mille` - The protocol fee rate in per mille (e.g., 50 = 5%)
+    /// * `gas` - Optional gas object ID to use for the transaction
+    /// * `gas_budget` - Optional gas budget for the transaction (defaults to GAS_BUDGET)
+    /// * `gas_price` - Optional gas price for the transaction
+    ///
+    /// # Returns
+    /// * `Result<String>` - The transaction digest if successful, or an error if the transaction fails
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let tx_digest = client.set_protocol_fee_per_mille(50, None, None, None).await?;
+    /// ```
     #[instrument(
         level = "info",
         name = "set_protocol_fee_per_mille",
