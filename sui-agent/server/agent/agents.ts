@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
 import path from "path";
+import { TransactionAgent } from "./transactionAgent";
 
 // Configure dotenv with explicit path
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -239,8 +240,101 @@ const formatPrice = (price: TokenPrice, symbol: string) => {
   return `${symbol}: ${formattedPrice} (${changePercent})`;
 };
 
-async function getPriceInfo(query: string) {
+const transactionAgent = new TransactionAgent();
+
+async function handleTransactionQuery(query: string, transactionData?: any) {
   try {
+    console.log("Handling transaction query:", { query, transactionData });
+
+    // Extract numbers and addresses from the query
+    const amountMatch = query.match(/(\d+(?:\.\d+)?)\s*(?:sui|SUI)/i);
+    const addressMatch = query.match(/0x[a-fA-F0-9]{64}/);
+
+    console.log("Matches:", { amountMatch, addressMatch });
+
+    if (amountMatch && addressMatch) {
+      const amount = parseFloat(amountMatch[1]);
+      const recipient = addressMatch[0];
+      console.log("Parsed transfer details:", { amount, recipient });
+
+      try {
+        // Create transaction immediately
+        const transferTx = transactionAgent.buildTransferTx(
+          BigInt(amount * 1e9), // Convert SUI to MIST
+          recipient
+        );
+        console.log("Transaction built successfully");
+
+        const estimatedGas = await transactionAgent.estimateGas(transferTx);
+        console.log("Gas estimated:", estimatedGas.toString());
+
+        const response = {
+          status: "transaction_ready",
+          transaction: {
+            type: "transfer",
+            data: {
+              tx: transferTx,
+              estimatedGas: estimatedGas.toString(),
+            },
+          },
+          final_answer: `Ready to transfer ${amount} SUI to ${recipient}. Estimated gas: ${estimatedGas} MIST.`,
+        };
+        console.log("Transfer transaction ready:", response);
+        return response;
+      } catch (error) {
+        console.error("Error building transaction:", error);
+        return {
+          status: "error",
+          error: "Failed to build transaction. Please try again.",
+        };
+      }
+    }
+
+    // If no match found, ask for structured input
+    const response = {
+      status: "needs_info",
+      request:
+        "Please provide the transfer details in this format:\n" +
+        "transfer <amount> SUI to <wallet-address>\n" +
+        "For example: transfer 1 SUI to 0x123...",
+      transaction: {
+        type: "transfer",
+        data: null,
+      },
+    };
+    console.log("Requesting structured input:", response);
+    return response;
+  } catch (error) {
+    console.error("Error in handleTransactionQuery:", error);
+    return {
+      status: "error",
+      error: error instanceof Error ? error.message : "Unknown error occurred",
+    };
+  }
+}
+
+// Update getPriceInfo to handle transaction queries
+export async function getPriceInfo(query: string, transactionData?: any) {
+  try {
+    console.log("getPriceInfo called with:", { query, transactionData });
+
+    // Check if it's a transaction-related query
+    const isTransactionQuery =
+      query.toLowerCase().includes("transfer") ||
+      query.toLowerCase().includes("send") ||
+      query.toLowerCase().includes("merge coins") ||
+      query.toLowerCase().includes("stake") ||
+      query.toLowerCase().includes("staking") ||
+      query.toLowerCase().includes("balance") ||
+      transactionData;
+
+    console.log("Is transaction query:", isTransactionQuery);
+
+    if (isTransactionQuery) {
+      console.log("Routing to handleTransactionQuery");
+      return handleTransactionQuery(query, transactionData);
+    }
+
     console.log("Query:", query);
     const message = await anthropic.messages.create({
       model: "claude-3-sonnet-20240229",
@@ -324,6 +418,25 @@ async function getPriceInfo(query: string) {
               .map(([coin, price]) => formatPrice(price, coin))
               .join("\n");
             break;
+          case "get_dca_orders":
+            if (!result || (Array.isArray(result) && result.length === 0)) {
+              formattedAnswer = "No active DCA orders found for this wallet.";
+            } else if (Array.isArray(result)) {
+              formattedAnswer = `DCA Orders:\n${result
+                .map((order: any, index: number) => {
+                  return (
+                    `${index + 1}. Order ID: ${order.id}\n` +
+                    `   From: ${order.fromCoin}\n` +
+                    `   To: ${order.toCoin}\n` +
+                    `   Amount: ${order.amount}\n` +
+                    `   Frequency: ${order.frequency}`
+                  );
+                })
+                .join("\n\n")}`;
+            } else {
+              formattedAnswer = "Unexpected DCA orders format received.";
+            }
+            break;
           case "get_all_pools":
             const pools = result as PoolInfo[];
             const sortBy = action?.input?.sort_by || "tvl";
@@ -375,15 +488,6 @@ async function getPriceInfo(query: string) {
       };
     }
 
-    // Handle needs_info case
-    if (aiResponse.status === "needs_info") {
-      return {
-        status: "needs_info",
-        reasoning: aiResponse.reasoning,
-        request: aiResponse.request || aiResponse.reasoning,
-      };
-    }
-
     // Handle error case
     if (aiResponse.status === "error") {
       return {
@@ -398,7 +502,7 @@ async function getPriceInfo(query: string) {
       error: "Invalid response format",
     };
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Error in getPriceInfo:", error);
     return {
       status: "error",
       error: error instanceof Error ? error.message : "Unknown error occurred",
@@ -439,5 +543,3 @@ async function main() {
 if (require.main === module) {
   main().catch(console.error);
 }
-
-export { getPriceInfo };

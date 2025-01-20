@@ -16,81 +16,34 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const agents_1 = require("../agent/agents");
 const app = (0, express_1.default)();
+const router = express_1.default.Router();
 app.use((0, cors_1.default)());
 app.use(express_1.default.json());
 const TIMEOUT = 30000;
-app.post("/api/query", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+router.post("/query", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { query } = req.body;
-        const result = (yield Promise.race([
-            (0, agents_1.getPriceInfo)(query),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Request timeout")), TIMEOUT)),
-        ]));
+        const { query, transactionData } = req.body;
+        const result = yield (0, agents_1.getPriceInfo)(query, transactionData);
         if (result.status === "needs_info") {
-            return res.status(202).json(result); // 202 Accepted but needs more info
+            res.status(202).json(result);
         }
-        if (result.status === "error") {
-            return res.status(400).json(result);
+        else if (result.status === "error") {
+            res.status(400).json(result);
         }
-        return res.status(200).json(result);
+        else {
+            res.status(200).json(result);
+        }
     }
     catch (error) {
-        res
-            .status(500)
-            .json({
+        console.error("Error processing query:", error);
+        res.status(500).json({
             status: "error",
             error: error instanceof Error ? error.message : "Unknown error occurred",
         });
     }
-    // try {
-    //       const { query } = req.body;
-    //       const result = (await Promise.race([
-    //         getPriceInfo(query),
-    //         new Promise((_, reject) =>
-    //           setTimeout(() => reject(new Error("Request timeout")), TIMEOUT)
-    //         ),
-    //       ])) as QueryResult;
-    //       if (result.status === "needs_info") {
-    //         return res.status(202).json(result); // 202 Accepted but needs more info
-    //       }
-    //       if (result.status === "error") {
-    //         return res.status(400).json(result); // 400 Bad Request
-    //       }
-    //      return res.status(200).json(result);
-    //     }
-    //     catch (error) {
-    //       console.error("API Error:", error);
-    //       return res.status(500).json({
-    //         status: "error",
-    //         error: error instanceof Error ? error.message : "Unknown error occurred",
-    //       });
-    //     }
 }));
+app.use("/api", router);
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
-// async (req, res) => {
-//   try {
-//     const { query } = req.body;
-//     const result = (await Promise.race([
-//       getPriceInfo(query),
-//       new Promise((_, reject) =>
-//         setTimeout(() => reject(new Error("Request timeout")), TIMEOUT)
-//       ),
-//     ])) as QueryResult;
-//     if (result.status === "needs_info") {
-//       return res.status(202).json(result); // 202 Accepted but needs more info
-//     }
-//     if (result.status === "error") {
-//       return res.status(400).json(result); // 400 Bad Request
-//     }
-//     res.json(result);
-//   } catch (error) {
-//     console.error("API Error:", error);
-//     res.status(500).json({
-//       status: "error",
-//       error: error instanceof Error ? error.message : "Unknown error occurred",
-//     });
-//   }
-// }

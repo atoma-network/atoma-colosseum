@@ -13,18 +13,35 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getPriceInfo = getPriceInfo;
+const sdk_1 = __importDefault(require("@anthropic-ai/sdk"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
+const transactionAgent_1 = require("./transactionAgent");
 // Configure dotenv with explicit path
-dotenv_1.default.config({ path: path_1.default.resolve(__dirname, "../../.env") });
-const atoma_sdk_1 = require("atoma-sdk");
+dotenv_1.default.config({ path: path_1.default.resolve(__dirname, "../.env") });
+// Replace OpenAI with Anthropic
+const anthropic = new sdk_1.default({
+    apiKey: process.env.ANTHROPIC_API_KEY,
+});
 const toolDefinitions_1 = require("./toolDefinitions");
 const PriceAnalysis_1 = require("../markets/PriceAnalysis");
 const config_1 = require("../common/config");
-// Initialize the Atoma SDK with proper authentication
-const atomaSDK = new atoma_sdk_1.AtomaSDK({
-    bearerAuth: process.env.ATOMASDK_BEARER_AUTH,
-});
+const prompt_1 = require("./prompt");
+// Create a map of tool implementations
+const toolImplementations = {
+    get_token_price: PriceAnalysis_1.getTokenPrice,
+    get_coins_price_info: PriceAnalysis_1.getCoinsPriceInfo,
+    get_pool_info: PriceAnalysis_1.getPool,
+    get_all_pools: PriceAnalysis_1.getAllPools,
+    get_pool_spot_price: PriceAnalysis_1.getPoolSpotPrice,
+    get_trade_route: PriceAnalysis_1.getTradeRoute,
+    get_staking_positions: PriceAnalysis_1.getStakingPositions,
+    get_dca_orders: PriceAnalysis_1.getDcaOrders,
+};
+// // Initialize the Atoma SDK with proper authentication
+// const atomaSDK = new AtomaSDK({
+//   bearerAuth: process.env.ATOMASDK_BEARER_AUTH,
+// });
 // Add new formatting functions
 const formatSingleValue = (data, field, subfield) => {
     if (!data)
@@ -63,58 +80,6 @@ const formatSingleValue = (data, field, subfield) => {
             return `${field}: ${value}`;
     }
 };
-// Update the prompt template
-const createPricePrompt = (query) => `
-I am SuiSage, your friendly Sui blockchain assistant. I help users understand pool metrics and market data in simple terms.
-
-When you ask me about:
-• TVL - I'll show you the total value of assets in the pool
-• APR - I'll explain the annual returns based on trading fees
-• Daily Fees - I'll tell you how much the pool earned in the last 24 hours
-• Pool Info - I'll give you a complete overview of the pool's performance
-
-Available Tools:
-${JSON.stringify(toolDefinitions_1.TOOL_DEFINITIONS.price_analysis.tools, null, 2)}
-
-Example Conversations:
-User: "What's the APR of this pool?"
-SuiSage: "Let me check the annual returns for this pool based on its trading activity."
-Response: "\${result.apr}%"
-
-User: "Show me the daily fees"
-SuiSage: "I'll look up how much this pool earned in trading fees today."
-Response: "$\${result.fee}"
-
-User: "Tell me about this pool"
-SuiSage: "I'll gather all the important metrics about this pool, including its size, returns, and token reserves."
-Response: "\${result}"
-
-Available Coins:
-${Object.entries(config_1.COIN_ADDRESSES)
-    .map(([symbol, address]) => `- ${symbol} (${address})`)
-    .join("\n")}
-
-User Query: ${query}
-
-Important: 
-- Explain concepts in simple terms
-- Use friendly, conversational language
-- Focus on what matters to users
-- Avoid technical jargon unless necessary
-
-Provide your response in the following JSON format:
-{
-  "status": "success" | "error" | "requires_info",
-  "reasoning": "Explain what you're checking and why it matters to the user",
-  "actions": [{
-    "tool": "tool_name",
-    "input": {
-      "param1": "value1"
-    },
-    "expected_outcome": "What information you'll provide to the user"
-  }],
-  "final_answer": "Your clear and friendly response with the data"
-}`;
 // Update the formatting logic in getPriceInfo function
 const formatPoolInfo = (data) => {
     if (!data)
@@ -149,180 +114,306 @@ Pool Stats:
         maximumFractionDigits: 2,
     })}%`;
 };
-function getPriceInfo(query) {
+// Add this helper function
+function convertCoinSymbolToAddress(symbol) {
+    const address = config_1.COIN_ADDRESSES[symbol.toUpperCase()];
+    if (!address) {
+        throw new Error(`Unknown coin symbol: ${symbol}`);
+    }
+    return address;
+}
+// Update the executeAction function
+function executeAction(action) {
+    return __awaiter(this, void 0, void 0, function* () {
+        // Validate that the tool exists
+        const toolDef = Object.values(toolDefinitions_1.TOOL_DEFINITIONS)
+            .flatMap((category) => category.tools)
+            .find((tool) => tool.name === action.tool);
+        if (!toolDef) {
+            throw new Error(`Unknown tool: ${action.tool}`);
+        }
+        // Convert coin symbols to addresses where needed
+        const processedInput = Object.assign({}, action.input);
+        if (action.tool === "get_coins_price_info" &&
+            Array.isArray(action.input.coins)) {
+            processedInput.coins = action.input.coins.map(convertCoinSymbolToAddress);
+        }
+        else if (action.tool === "get_token_price" && action.input.token_type) {
+            processedInput.token_type = convertCoinSymbolToAddress(action.input.token_type);
+        }
+        else if (action.tool === "get_pool_spot_price") {
+            if (action.input.coin_in_type) {
+                processedInput.coin_in_type = convertCoinSymbolToAddress(action.input.coin_in_type);
+            }
+            if (action.input.coin_out_type) {
+                processedInput.coin_out_type = convertCoinSymbolToAddress(action.input.coin_out_type);
+            }
+        }
+        // Validate inputs against tool definition
+        for (const inputDef of toolDef.inputs) {
+            if (!inputDef.optional && !(inputDef.name in processedInput)) {
+                throw new Error(`Missing required input: ${inputDef.name} for tool ${action.tool}`);
+            }
+        }
+        const toolFunc = toolImplementations[action.tool];
+        if (!toolFunc) {
+            throw new Error(`Implementation not found for tool: ${action.tool}`);
+        }
+        // Convert input object to ordered arguments based on tool definition
+        const args = toolDef.inputs.map((input) => { var _a; return (_a = processedInput[input.name]) !== null && _a !== void 0 ? _a : input.default; });
+        return yield toolFunc(...args);
+    });
+}
+// Add this helper function at the top with other formatting functions
+const formatPrice = (price, symbol) => {
+    const formattedPrice = new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: price.current >= 100 ? 2 : 4,
+    }).format(price.current);
+    const change = price.priceChange24h > 0 ? "+" : "";
+    const changePercent = `${change}${price.priceChange24h.toFixed(2)}%`;
+    return `${symbol}: ${formattedPrice} (${changePercent})`;
+};
+const transactionAgent = new transactionAgent_1.TransactionAgent();
+function handleTransactionQuery(query, transactionData) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
-            // Get AI response
-            const result = yield atomaSDK.chat.create({
-                messages: [
-                    {
-                        content: createPricePrompt(query),
-                        role: "user",
-                    },
-                ],
-                model: "meta-llama/Llama-3.3-70B-Instruct",
-                maxTokens: 128,
-            });
-            // Extract JSON from markdown response
-            const content = result.choices[0].message.content;
-            const jsonMatch = content.match(/```(?:json)?\n([\s\S]*?)\n```/) ||
-                content.match(/({[\s\S]*})/);
-            const jsonString = jsonMatch ? jsonMatch[1].trim() : content.trim();
-            try {
-                // Parse the AI response
-                const aiResponse = JSON.parse(jsonString);
-                // Validate AI response
-                if (aiResponse.status === "error") {
-                    throw new Error(aiResponse.error_message);
+            console.log("Handling transaction query:", { query, transactionData });
+            // Extract numbers and addresses from the query
+            const amountMatch = query.match(/(\d+(?:\.\d+)?)\s*(?:sui|SUI)/i);
+            const addressMatch = query.match(/0x[a-fA-F0-9]{64}/);
+            console.log("Matches:", { amountMatch, addressMatch });
+            if (amountMatch && addressMatch) {
+                const amount = parseFloat(amountMatch[1]);
+                const recipient = addressMatch[0];
+                console.log("Parsed transfer details:", { amount, recipient });
+                try {
+                    // Create transaction immediately
+                    const transferTx = transactionAgent.buildTransferTx(BigInt(amount * 1e9), // Convert SUI to MIST
+                    recipient);
+                    console.log("Transaction built successfully");
+                    const estimatedGas = yield transactionAgent.estimateGas(transferTx);
+                    console.log("Gas estimated:", estimatedGas.toString());
+                    const response = {
+                        status: "transaction_ready",
+                        transaction: {
+                            type: "transfer",
+                            data: {
+                                tx: transferTx,
+                                estimatedGas: estimatedGas.toString(),
+                            },
+                        },
+                        final_answer: `Ready to transfer ${amount} SUI to ${recipient}. Estimated gas: ${estimatedGas} MIST.`,
+                    };
+                    console.log("Transfer transaction ready:", response);
+                    return response;
                 }
-                if (aiResponse.status === "requires_info") {
+                catch (error) {
+                    console.error("Error building transaction:", error);
                     return {
-                        status: "needs_info",
-                        request: aiResponse.request,
+                        status: "error",
+                        error: "Failed to build transaction. Please try again.",
                     };
                 }
-                // Execute the actions recommended by the AI
-                const results = [];
+            }
+            // If no match found, ask for structured input
+            const response = {
+                status: "needs_info",
+                request: "Please provide the transfer details in this format:\n" +
+                    "transfer <amount> SUI to <wallet-address>\n" +
+                    "For example: transfer 1 SUI to 0x123...",
+                transaction: {
+                    type: "transfer",
+                    data: null,
+                },
+            };
+            console.log("Requesting structured input:", response);
+            return response;
+        }
+        catch (error) {
+            console.error("Error in handleTransactionQuery:", error);
+            return {
+                status: "error",
+                error: error instanceof Error ? error.message : "Unknown error occurred",
+            };
+        }
+    });
+}
+// Update getPriceInfo to handle transaction queries
+function getPriceInfo(query, transactionData) {
+    return __awaiter(this, void 0, void 0, function* () {
+        var _a, _b, _c;
+        try {
+            console.log("getPriceInfo called with:", { query, transactionData });
+            // Check if it's a transaction-related query
+            const isTransactionQuery = query.toLowerCase().includes("transfer") ||
+                query.toLowerCase().includes("send") ||
+                query.toLowerCase().includes("merge coins") ||
+                query.toLowerCase().includes("stake") ||
+                query.toLowerCase().includes("staking") ||
+                query.toLowerCase().includes("balance") ||
+                transactionData;
+            console.log("Is transaction query:", isTransactionQuery);
+            if (isTransactionQuery) {
+                console.log("Routing to handleTransactionQuery");
+                return handleTransactionQuery(query, transactionData);
+            }
+            console.log("Query:", query);
+            const message = yield anthropic.messages.create({
+                model: "claude-3-sonnet-20240229",
+                max_tokens: 500,
+                temperature: 0.3,
+                messages: [
+                    {
+                        role: "user",
+                        content: (0, prompt_1.createSuiSagePrompt)(query),
+                    },
+                ],
+            });
+            const content = message.content[0].type === "text" ? message.content[0].text : "";
+            if (!content) {
+                throw new Error("No response from Claude");
+            }
+            console.log("AI Response:", content);
+            // Parse the JSON response
+            let aiResponse;
+            try {
+                // First try to parse the entire content
+                aiResponse = JSON.parse(content);
+            }
+            catch (_d) {
+                // If that fails, try to extract JSON from markdown code blocks
+                const jsonMatch = content.match(/```(?:json)?\n([\s\S]*?)\n```/) ||
+                    content.match(/({[\s\S]*})/);
+                if (!jsonMatch) {
+                    throw new Error("Could not parse AI response");
+                }
+                aiResponse = JSON.parse(jsonMatch[1].trim());
+            }
+            console.log("Parsed Response:", aiResponse);
+            // Execute actions if they exist, regardless of status
+            const results = [];
+            if (aiResponse.actions && aiResponse.actions.length > 0) {
                 for (const action of aiResponse.actions) {
-                    console.log(`Executing action: ${action.tool}`);
-                    console.log("Input parameters:", action.input);
-                    // Execute the appropriate tool
-                    let result = null;
-                    switch (action.tool) {
-                        case "get_token_price":
-                            result = yield (0, PriceAnalysis_1.getTokenPrice)(action.input.token_type, action.input.network);
-                            break;
-                        case "get_coins_price_info":
-                            result = yield (0, PriceAnalysis_1.getCoinsPriceInfo)(action.input.coins, action.input.network);
-                            break;
+                    try {
+                        const result = yield executeAction(action);
+                        results.push({
+                            tool: action.tool,
+                            result,
+                            action,
+                        });
+                    }
+                    catch (error) {
+                        console.error(`Error executing tool ${action.tool}:`, error);
+                        return {
+                            status: "error",
+                            error: error instanceof Error ? error.message : "Tool execution failed",
+                        };
+                    }
+                }
+                // Format the results
+                let formattedAnswer = "";
+                for (const { tool, result, action } of results) {
+                    switch (tool) {
                         case "get_pool_info":
-                            result = yield (0, PriceAnalysis_1.getPool)(action.input.pool_id, action.input.network);
-                            break;
-                        case "get_all_pools":
-                            result = yield (0, PriceAnalysis_1.getAllPools)(action.input.network);
+                            formattedAnswer = formatPoolInfo(result);
                             break;
                         case "get_pool_spot_price":
-                            result = yield (0, PriceAnalysis_1.getPoolSpotPrice)(action.input.pool_id, action.input.coin_in_type, action.input.coin_out_type, action.input.with_fees, action.input.network);
+                            formattedAnswer = `Spot Price: ${result}`;
                             break;
-                        case "get_trade_route":
-                            result = yield (0, PriceAnalysis_1.getTradeRoute)(action.input.coin_in_type, action.input.coin_out_type, BigInt(action.input.coin_in_amount), action.input.network);
+                        case "get_token_price":
+                            const price = result;
+                            const symbol = ((_a = action === null || action === void 0 ? void 0 : action.input) === null || _a === void 0 ? void 0 : _a.token_type) || "Token";
+                            formattedAnswer = formatPrice(price, symbol);
                             break;
-                        case "get_staking_positions":
-                            result = yield (0, PriceAnalysis_1.getStakingPositions)(action.input.wallet_address, action.input.network);
+                        case "get_coins_price_info":
+                            formattedAnswer = Object.entries(result)
+                                .map(([coin, price]) => formatPrice(price, coin))
+                                .join("\n");
                             break;
                         case "get_dca_orders":
-                            result = yield (0, PriceAnalysis_1.getDcaOrders)(action.input.wallet_address, action.input.network);
+                            if (!result || (Array.isArray(result) && result.length === 0)) {
+                                formattedAnswer = "No active DCA orders found for this wallet.";
+                            }
+                            else if (Array.isArray(result)) {
+                                formattedAnswer = `DCA Orders:\n${result
+                                    .map((order, index) => {
+                                    return (`${index + 1}. Order ID: ${order.id}\n` +
+                                        `   From: ${order.fromCoin}\n` +
+                                        `   To: ${order.toCoin}\n` +
+                                        `   Amount: ${order.amount}\n` +
+                                        `   Frequency: ${order.frequency}`);
+                                })
+                                    .join("\n\n")}`;
+                            }
+                            else {
+                                formattedAnswer = "Unexpected DCA orders format received.";
+                            }
                             break;
-                    }
-                    results.push({
-                        tool: action.tool,
-                        result,
-                    });
-                }
-                // Format final answer using the results
-                let finalAnswer = aiResponse.final_answer;
-                if (results.length > 0 && results[0].result) {
-                    const data = results[0].result;
-                    const action = aiResponse.actions[0];
-                    // If it's a pool info query, replace the entire result
-                    if (action.tool === "get_pool_info" &&
-                        (finalAnswer.includes("${result}") ||
-                            finalAnswer === "Pool Information: No data available")) {
-                        const summary = `This pool has a Total Value Locked (TVL) of $${Number(data.tvl).toLocaleString("en-US", {
-                            maximumFractionDigits: 2,
-                        })}, generates $${Number(data.fee).toLocaleString("en-US", {
-                            maximumFractionDigits: 2,
-                        })} in daily fees, and offers an APR of ${Number(data.apr).toLocaleString("en-US", {
-                            maximumFractionDigits: 2,
-                        })}%.`;
-                        finalAnswer = `${summary}\n\n${formatPoolInfo(data)}`;
-                    }
-                    // Add special handling for spot price
-                    else if (action.tool === "get_pool_spot_price") {
-                        const spotPrice = Number(data).toFixed(6);
-                        const inToken = action.input.coin_in_type.split("::").pop() || "token";
-                        const outToken = action.input.coin_out_type.split("::").pop() || "token";
-                        finalAnswer = `The current spot price is ${spotPrice} ${outToken} per ${inToken}`;
-                    }
-                    // Add special handling for fee queries
-                    else if (action.tool === "get_pool_info" &&
-                        query.toLowerCase().includes("fee")) {
-                        const dailyFees = Number(data.fee).toLocaleString("en-US", {
-                            maximumFractionDigits: 2,
-                        });
-                        finalAnswer = `The daily trading fees for this pool are $${dailyFees}`;
-                    }
-                    // Add special handling for coin price queries
-                    else if (action.tool === "get_coins_price_info") {
-                        const prices = Object.entries(data).map(([addr, info]) => {
-                            var _a;
-                            const symbol = ((_a = Object.entries(config_1.COIN_ADDRESSES).find(([_, address]) => address === addr)) === null || _a === void 0 ? void 0 : _a[0]) || addr.split("::")[2];
-                            return `${symbol}: $${Number(info.current).toLocaleString("en-US", {
-                                maximumFractionDigits: 2,
-                            })}`;
-                        });
-                        finalAnswer = `Current prices:\n${prices.join("\n")}`;
-                    }
-                    else {
-                        finalAnswer = finalAnswer.replace(/\${([^}]+)}/g, (match, p1) => {
-                            var _a, _b;
-                            try {
-                                if (p1.includes("results[")) {
-                                    // For multiple coins (existing logic)
-                                    const matches = p1.match(/results\['([^']+)'\]\.(.+)/);
-                                    if (!matches)
-                                        return match;
-                                    const [_, coin, field] = matches;
-                                    // special case for SUI's address
-                                    const normalizedCoin = coin === "0x2::sui::SUI"
-                                        ? "0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI"
-                                        : coin;
-                                    return ((_b = (_a = data[normalizedCoin]) === null || _a === void 0 ? void 0 : _a[field]) === null || _b === void 0 ? void 0 : _b.toFixed(3)) || match;
+                        case "get_all_pools":
+                            const pools = result;
+                            const sortBy = ((_b = action === null || action === void 0 ? void 0 : action.input) === null || _b === void 0 ? void 0 : _b.sort_by) || "tvl";
+                            const limit = ((_c = action === null || action === void 0 ? void 0 : action.input) === null || _c === void 0 ? void 0 : _c.limit) || 10;
+                            const sortedPools = pools
+                                .sort((a, b) => {
+                                switch (sortBy) {
+                                    case "apr":
+                                        return (b.apr || 0) - (a.apr || 0);
+                                    case "fees":
+                                        return (b.fee || 0) - (a.fee || 0);
+                                    case "tvl":
+                                    default:
+                                        return (b.tvl || 0) - (a.tvl || 0);
                                 }
-                                else {
-                                    // For single result
-                                    const path = p1.replace(/^result\./, "").split(".");
-                                    let value = data;
-                                    for (const key of path) {
-                                        value = value[key];
-                                    }
-                                    // Special handling for arrays and objects
-                                    if (Array.isArray(value)) {
-                                        return value.length === 0
-                                            ? "No data found"
-                                            : JSON.stringify(value, null, 2);
-                                    }
-                                    else if (typeof value === "object" && value !== null) {
-                                        if (action.tool === "get_pool_info") {
-                                            return formatPoolInfo(value);
-                                        }
-                                        return JSON.stringify(value, null, 2);
-                                    }
-                                    return !isNaN(value)
-                                        ? Number(value).toFixed(3)
-                                        : (value === null || value === void 0 ? void 0 : value.toString()) || "No data available";
-                                }
-                            }
-                            catch (_c) {
-                                return "Error processing data";
-                            }
-                        });
+                            })
+                                .slice(0, limit);
+                            formattedAnswer = sortedPools
+                                .map((pool, index) => {
+                                var _a, _b, _c;
+                                return `${index + 1}. Pool ${pool.id}
+    TVL: $${(_a = pool.tvl) === null || _a === void 0 ? void 0 : _a.toLocaleString()}
+    APR: ${(_b = pool.apr) === null || _b === void 0 ? void 0 : _b.toFixed(2)}%
+    Daily Fees: $${(_c = pool.fee) === null || _c === void 0 ? void 0 : _c.toLocaleString()}`;
+                            })
+                                .join("\n\n");
+                            break;
+                        default:
+                            formattedAnswer = JSON.stringify(result, null, 2);
                     }
                 }
+                // Return the formatted response
                 return {
                     status: "success",
                     reasoning: aiResponse.reasoning,
                     results,
-                    final_answer: finalAnswer,
+                    final_answer: formattedAnswer,
                 };
             }
-            catch (error) {
-                console.error("Failed to parse AI response:", jsonString);
-                throw new Error("Failed to parse AI response");
+            // If no actions but status is success, return the final answer
+            if (aiResponse.status === "success") {
+                return {
+                    status: "success",
+                    reasoning: aiResponse.reasoning,
+                    final_answer: aiResponse.final_answer,
+                };
             }
+            // Handle error case
+            if (aiResponse.status === "error") {
+                return {
+                    status: "error",
+                    error: aiResponse.error_message || aiResponse.reasoning,
+                };
+            }
+            // Fallback
+            return {
+                status: "error",
+                error: "Invalid response format",
+            };
         }
         catch (error) {
-            console.error("Error:", error);
+            console.error("Error in getPriceInfo:", error);
             return {
                 status: "error",
                 error: error instanceof Error ? error.message : "Unknown error occurred",

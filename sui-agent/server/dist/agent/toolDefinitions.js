@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TOOL_DEFINITIONS = void 0;
+// Update the tool definitions
 exports.TOOL_DEFINITIONS = {
     price_analysis: {
         name: "price_analysis",
@@ -87,14 +88,21 @@ exports.TOOL_DEFINITIONS = {
             },
             {
                 name: "get_all_pools",
-                description: "Fetches information about all available liquidity pools",
+                description: "Get pool information sorted by specified metric (tvl, apr, fees). Default limit is 10 pools.",
                 inputs: [
                     {
-                        name: "network",
+                        name: "sort_by",
                         type: "string",
-                        description: "Network to query ('MAINNET' or 'TESTNET')",
+                        description: "Metric to sort by: 'tvl', 'apr', or 'fees'",
                         optional: true,
-                        default: "MAINNET",
+                        default: "tvl",
+                    },
+                    {
+                        name: "limit",
+                        type: "number",
+                        description: "Number of pools to return",
+                        optional: true,
+                        default: 10,
                     },
                 ],
                 output: {

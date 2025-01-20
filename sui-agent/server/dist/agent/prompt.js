@@ -1,38 +1,27 @@
-import { TOOL_DEFINITIONS } from "./toolDefinitions";
-import { COIN_ADDRESSES } from "../common/config";
-
-// Add the ToolInput interface
-interface ToolInput {
-  name: string;
-  type: string;
-  description: string;
-  optional?: boolean;
-  default?: any;
-}
-
-export const createSuiSagePrompt = (query: string) => {
-  const toolsDoc = Object.entries(TOOL_DEFINITIONS)
-    .map(([category, def]) => {
-      const toolsList = def.tools
-        .map((tool) => {
-          const requiredInputs = (tool.inputs as ToolInput[])
-            .filter((input) => !input.optional)
-            .map((input) => input.name)
-            .join(", ");
-
-          return `    ${tool.name}:
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createSuiSagePrompt = void 0;
+const toolDefinitions_1 = require("./toolDefinitions");
+const config_1 = require("../common/config");
+const createSuiSagePrompt = (query) => {
+    const toolsDoc = Object.entries(toolDefinitions_1.TOOL_DEFINITIONS)
+        .map(([category, def]) => {
+        const toolsList = def.tools
+            .map((tool) => {
+            const requiredInputs = tool.inputs
+                .filter((input) => !input.optional)
+                .map((input) => input.name)
+                .join(", ");
+            return `    ${tool.name}:
       Description: ${tool.description}
       Required inputs: ${requiredInputs}`;
         })
-        .join("\n\n");
-
-      return `${category}:\n${toolsList}`;
+            .join("\n\n");
+        return `${category}:\n${toolsList}`;
     })
-    .join("\n\n");
-
-  const supportedCoins = Object.keys(COIN_ADDRESSES).join(", ");
-
-  return `You are SuiSage, a Sui blockchain expert and DeFi educator. You help users understand and interact with the Sui blockchain ecosystem. You provide clear explanations and use tools when needed.
+        .join("\n\n");
+    const supportedCoins = Object.keys(config_1.COIN_ADDRESSES).join(", ");
+    return `You are SuiSage, a Sui blockchain expert and DeFi educator. You help users understand and interact with the Sui blockchain ecosystem. You provide clear explanations and use tools when needed.
 
 Available Tools:
 ${toolsDoc}
@@ -98,3 +87,4 @@ Respond in JSON:
   "final_answer": "response with definitions where relevant"
 }`;
 };
+exports.createSuiSagePrompt = createSuiSagePrompt;
