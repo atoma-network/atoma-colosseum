@@ -1,7 +1,7 @@
 import express from "express";
 import type { Request, Response, Router } from "express";
 import cors from "cors";
-import { getPriceInfo } from "../agent/agents";
+import { handleQuery } from "../agent/agents";
 
 const app = express();
 const router = express.Router();
@@ -35,7 +35,7 @@ interface TransactionRequest {
 router.post<{}, any, TransactionRequest>("/query", async (req, res) => {
   try {
     const { query, transactionData } = req.body;
-    const result = await getPriceInfo(query, transactionData);
+    const result = await handleQuery(query, transactionData);
 
     if (result.status === "needs_info") {
       res.status(202).json(result);

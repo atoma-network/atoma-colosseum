@@ -2,7 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
 import path from "path";
 import { AtomaSDK } from "atoma-sdk";
-import { TransactionAgent } from "./transactionAgent";
+import { TransactionAgent } from "../transactions/transaction";
+import { formatResponse } from "./responseFormatters";
 
 // Configure dotenv with explicit path
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -59,94 +60,6 @@ const toolImplementations: Record<string, ToolFunction> = {
 // const atomaSDK = new AtomaSDK({
 //   bearerAuth: process.env.ATOMASDK_BEARER_AUTH,
 // });
-
-// Add new formatting functions
-const formatSingleValue = (data: any, field: string, subfield?: string) => {
-  if (!data) return "Data not available";
-
-  let value = data[field];
-  if (subfield && typeof value === "object") {
-    value = value[subfield];
-  }
-
-  switch (field) {
-    case "apr":
-      return `APR: ${value}%`;
-    case "tvl":
-      return `TVL: $${Number(value).toLocaleString("en-US", {
-        maximumFractionDigits: 2,
-      })}`;
-    case "reserves":
-      if (typeof value === "object" && Array.isArray(value)) {
-        const tokenNames = data.tokens.map((addr: string) => {
-          const symbol =
-            Object.entries(COIN_ADDRESSES).find(
-              ([_, address]) => address === addr
-            )?.[0] || "Unknown";
-          return symbol;
-        });
-
-        if (subfield && !isNaN(parseInt(subfield))) {
-          const idx = parseInt(subfield);
-          const formattedValue = (
-            Number(value[idx]) /
-            1e9 /
-            1e6
-          ).toLocaleString("en-US", {
-            maximumFractionDigits: 2,
-            minimumFractionDigits: 2,
-          });
-          return `${tokenNames[idx]} Reserve: ${formattedValue}M`;
-        }
-      }
-      return `${field}: ${value}`;
-    default:
-      return `${field}: ${value}`;
-  }
-};
-
-// Update the formatting logic in getPriceInfo function
-const formatPoolInfo = (data: any) => {
-  if (!data) return "Pool information not available";
-
-  const tokenNames = data.tokens.map((addr: string) => {
-    const symbol =
-      Object.entries(COIN_ADDRESSES).find(
-        ([_, address]) => address === addr
-      )?.[0] || "Unknown";
-    return symbol;
-  });
-
-  const reserves = data.reserves.map((r: string | bigint): string => {
-    const value = Number(r) / 1e9;
-    return value.toLocaleString("en-US", {
-      maximumFractionDigits: 2,
-    });
-  });
-
-  const tokenReservePairs = tokenNames.map(
-    (token: string, i: number) =>
-      `${token.padEnd(10)}: ${reserves[i].padStart(12)}`
-  );
-
-  return `Pool Information
-================
-ID: ${data.id}
-
-Tokens and Reserves:
-${tokenReservePairs.join("\n")}
-
-Pool Stats:
-• TVL: $${Number(data.tvl).toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-  })}
-• Daily Fees: $${Number(data.fee).toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-  })}
-• APR: ${Number(data.apr).toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-  })}%`;
-};
 
 // Add this helper function
 function convertCoinSymbolToAddress(symbol: string): string {
@@ -229,21 +142,6 @@ async function executeAction(action: {
   return await toolFunc(...args);
 }
 
-// Add this helper function at the top with other formatting functions
-const formatPrice = (price: TokenPrice, symbol: string) => {
-  const formattedPrice = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: price.current >= 100 ? 2 : 4,
-  }).format(price.current);
-
-  const change = price.priceChange24h > 0 ? "+" : "";
-  const changePercent = `${change}${price.priceChange24h.toFixed(2)}%`;
-
-  return `${symbol}: ${formattedPrice} (${changePercent})`;
-};
-
 const transactionAgent = new TransactionAgent();
 
 async function handleTransactionQuery(query: string, transactionData?: any) {
@@ -317,10 +215,10 @@ async function handleTransactionQuery(query: string, transactionData?: any) {
   }
 }
 
-// Update getPriceInfo to handle transaction queries
-export async function getPriceInfo(query: string, transactionData?: any) {
+// Update function name to reflect its general purpose
+async function handleQuery(query: string, transactionData?: any) {
   try {
-    console.log("getPriceInfo called with:", { query, transactionData });
+    console.log("handleQuery called with:", { query, transactionData });
 
     // Check if it's a transaction-related query
     const isTransactionQuery =
@@ -340,6 +238,8 @@ export async function getPriceInfo(query: string, transactionData?: any) {
     }
 
     console.log("Query:", query);
+
+//Replace with Atoma and Compare output
     const message = await anthropic.messages.create({
       model: "claude-3-sonnet-20240229",
       max_tokens: 500,
@@ -356,7 +256,7 @@ export async function getPriceInfo(query: string, transactionData?: any) {
       message.content[0].type === "text" ? message.content[0].text : "";
 
     if (!content) {
-      throw new Error("No response from Claude");
+      throw new Error("No response from Atoma");
     }
 
     console.log("AI Response:", content);
@@ -400,86 +300,21 @@ export async function getPriceInfo(query: string, transactionData?: any) {
         }
       }
 
-      // Format the results
-      let formattedAnswer = "";
-      for (const { tool, result, action } of results) {
-        switch (tool) {
-          case "get_pool_info":
-            formattedAnswer = formatPoolInfo(result);
-            break;
-          case "get_pool_spot_price":
-            formattedAnswer = `Spot Price: ${result}`;
-            break;
-          case "get_token_price":
-            const price = result as TokenPrice;
-            const symbol = action?.input?.token_type || "Token";
-            formattedAnswer = formatPrice(price, symbol);
-            break;
-          case "get_coins_price_info":
-            formattedAnswer = Object.entries(
-              result as Record<string, TokenPrice>
-            )
-              .map(([coin, price]) => formatPrice(price, coin))
-              .join("\n");
-            break;
-          case "get_dca_orders":
-            if (!result || (Array.isArray(result) && result.length === 0)) {
-              formattedAnswer = "No active DCA orders found for this wallet.";
-            } else if (Array.isArray(result)) {
-              formattedAnswer = `DCA Orders:\n${result
-                .map((order: any, index: number) => {
-                  return (
-                    `${index + 1}. Order ID: ${order.id}\n` +
-                    `   From: ${order.fromCoin}\n` +
-                    `   To: ${order.toCoin}\n` +
-                    `   Amount: ${order.amount}\n` +
-                    `   Frequency: ${order.frequency}`
-                  );
-                })
-                .join("\n\n")}`;
-            } else {
-              formattedAnswer = "Unexpected DCA orders format received.";
-            }
-            break;
-          case "get_all_pools":
-            const pools = result as PoolInfo[];
-            const sortBy = action?.input?.sort_by || "tvl";
-            const limit = action?.input?.limit || 10;
-
-            const sortedPools = pools
-              .sort((a, b) => {
-                switch (sortBy) {
-                  case "apr":
-                    return (b.apr || 0) - (a.apr || 0);
-                  case "fees":
-                    return (b.fee || 0) - (a.fee || 0);
-                  case "tvl":
-                  default:
-                    return (b.tvl || 0) - (a.tvl || 0);
-                }
-              })
-              .slice(0, limit);
-
-            formattedAnswer = sortedPools
-              .map((pool, index) => {
-                return `${index + 1}. Pool ${pool.id}
-    TVL: $${pool.tvl?.toLocaleString()}
-    APR: ${pool.apr?.toFixed(2)}%
-    Daily Fees: $${pool.fee?.toLocaleString()}`;
-              })
-              .join("\n\n");
-            break;
-          default:
-            formattedAnswer = JSON.stringify(result, null, 2);
-        }
+      // Format the results using the new formatResponse function
+      let finalAnswer = aiResponse.final_answer;
+      if (results.length > 0 && results[0].result) {
+        finalAnswer = formatResponse(
+          aiResponse.actions[0],
+          results[0].result,
+          query
+        );
       }
 
-      // Return the formatted response
       return {
         status: "success",
         reasoning: aiResponse.reasoning,
         results,
-        final_answer: formattedAnswer,
+        final_answer: finalAnswer,
       };
     }
 
@@ -506,7 +341,7 @@ export async function getPriceInfo(query: string, transactionData?: any) {
       error: "Invalid response format",
     };
   } catch (error) {
-    console.error("Error in getPriceInfo:", error);
+    console.error("Error:", error);
     return {
       status: "error",
       error: error instanceof Error ? error.message : "Unknown error occurred",
@@ -518,19 +353,9 @@ export async function getPriceInfo(query: string, transactionData?: any) {
 async function main() {
   // Test different queries
   const queries = [
-    "Get me the prices of SUI and USDC",
-    "Show me the current prices of SUI, USDC, and BTC",
-    "Get information about pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
-    "Get fees for pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78",
+    "Get me the prices of SUI",
     "What's the spot price between afSUI and ksui in pool 0x52ac89ee8c446638930f53129803f026a04028d2c0deef314321f71c69ab7f78?",
-    "What are the top pools by tvl?",
-    "What are the top pools by fees?",
-    "What are the top pools by apr?",
-    "What are the top pools by volume?",
-    "What are the top pools by liquidity?",
-    "What are the top pools by reserves?",
-    "What are the top pools by token?",
-    "What are the top pools by token?",
+    "What are the top 10 pools by tvl?",
   ];
 
   for (const query of queries) {
@@ -538,7 +363,7 @@ async function main() {
     console.log("Query:", query);
     console.log("-------------------");
 
-    const result = await getPriceInfo(query);
+    const result = await handleQuery(query);
     console.log("Result:", JSON.stringify(result, null, 2));
   }
 }
@@ -547,3 +372,5 @@ async function main() {
 if (require.main === module) {
   main().catch(console.error);
 }
+
+export { handleQuery };
