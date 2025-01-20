@@ -1,14 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
 import dotenv from "dotenv";
 import path from "path";
+import { AtomaSDK } from "atoma-sdk";
 import { TransactionAgent } from "./transactionAgent";
 
 // Configure dotenv with explicit path
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
-// Replace OpenAI with Anthropic
+// const atomaSDK = new AtomaSDK({
+//   bearerAuth: process.env.ATOMASDK_BEARER_AUTH,
+// });
+
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: process.env.ATOMASDK_BEARER_AUTH,
 });
 
 import { TOOL_DEFINITIONS, type ToolInput } from "./toolDefinitions";
