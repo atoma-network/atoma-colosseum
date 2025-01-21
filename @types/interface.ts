@@ -164,4 +164,33 @@ export const COIN_SYNONYMS: Record<string, string> = {
     apr: number; // Annual Percentage Rate
   }
 
+
+  export interface TokenBalance {
+    token: string;
+    amount: bigint;
+    symbol?: string;
+    decimals?: number;
+  }
+
+export interface NetworkConfig {
+    fullnode: string;
+    faucet?: string;
+  }
+
+export interface NetworkConfigs {
+    MAINNET: NetworkConfig;
+    TESTNET: NetworkConfig;
+  }
+
+export const NETWORK_CONFIG: NetworkConfigs = {
+    MAINNET: {
+      fullnode: "https://fullnode.mainnet.sui.io",
+      faucet: undefined,
+    },
+    TESTNET: {
+      fullnode: "https://fullnode.testnet.sui.io",
+      faucet: "https://faucet.testnet.sui.io/gas",
+    },
+  };
+
     

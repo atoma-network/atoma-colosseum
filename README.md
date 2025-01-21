@@ -140,3 +140,390 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ```
 
 ```
+
+
+I'll help implement transaction tools in the registry and provide sample queries. Let's add these to the `ToolRegistry.ts`:
+
+```typescript:src/tools/ToolRegistry.ts
+import {
+  buildTransferTx,
+  buildMultiTransferTx,
+  estimateGas,
+  createMergeCoinsTx,
+  TransactionAgent
+} from "./TransactionTool";
+
+// ... existing imports and code ...
+
+export function registerAllTools(tools: Tools) {
+    // ... existing tool registrations ...
+
+    // Transaction Tools
+    tools.registerTool(
+        "transfer_coin",
+        "Tool to transfer a single type of coin to another address",
+        [{
+            name: "fromAddress",
+            type: "string",
+            description: "Sender's wallet address",
+            required: true
+        },
+        {
+            name: "toAddress",
+            type: "string",
+            description: "Recipient's wallet address",
+            required: true
+        },
+        {
+            name: "tokenType",
+            type: "string",
+            description: "Type of token to transfer (e.g., '0x2::sui::SUI')",
+            required: true
+        },
+        {
+            name: "amount",
+            type: "string",
+            description: "Amount to transfer in base units",
+            required: true
+        }],
+        buildTransferTx
+    );
+
+    tools.registerTool(
+        "multi_transfer",
+        "Tool to transfer multiple coins in a single transaction",
+        [{
+            name: "fromAddress",
+            type: "string",
+            description: "Sender's wallet address",
+            required: true
+        },
+        {
+            name: "toAddress",
+            type: "string",
+            description: "Recipient's wallet address",
+            required: true
+        },
+        {
+            name: "transfers",
+            type: "array",
+            description: "Array of token transfers with token type and amount",
+            required: true
+        }],
+        buildMultiTransferTx
+    );
+
+    tools.registerTool(
+        "merge_coins",
+        "Tool to merge multiple coins of the same type",
+        [{
+            name: "coinType",
+            type: "string",
+            description: "Type of coins to merge",
+            required: true
+        },
+        {
+            name: "walletAddress",
+            type: "string",
+            description: "Address owning the coins",
+            required: true
+        },
+        {
+            name: "maxCoins",
+            type: "number",
+            description: "Maximum number of coins to merge",
+            required: false
+        }],
+        createMergeCoinsTx
+    );
+
+    tools.registerTool(
+        "estimate_gas",
+        "Tool to estimate gas cost for a transaction",
+        [{
+            name: "transaction",
+            type: "object",
+            description: "Transaction block to estimate gas for",
+            required: true
+        }],
+        estimateGas
+    );
+
+    // ... rest of the existing code ...
+```
+
+
+Let me fix the linter errors by wrapping the transaction functions to return strings:
+
+```typescript:src/tools/ToolRegistry.ts
+// ... existing imports ...
+
+// Transaction wrapper functions
+async function transferCoinWrapper(
+    fromAddress: string,
+    toAddress: string,
+    tokenType: string,
+    amount: string
+): Promise<string> {
+    const client = initSuiClient();
+    const tx = await buildTransferTx(
+        client,
+        fromAddress,
+        toAddress,
+        tokenType,
+        BigInt(amount)
+    );
+    return JSON.stringify([{
+        reasoning: "Transfer transaction created successfully",
+        response: tx.serialize(),
+        status: "success",
+        query: `Transfer ${amount} of ${tokenType} from ${fromAddress} to ${toAddress}`,
+        errors: []
+    }]);
+}
+
+async function multiTransferWrapper(
+    fromAddress: string,
+    toAddress: string,
+    transfers: TokenBalance[]
+): Promise<string> {
+    const client = initSuiClient();
+    const tx = await buildMultiTransferTx(client, fromAddress, toAddress, transfers);
+    return JSON.stringify([{
+        reasoning: "Multi-transfer transaction created successfully",
+        response: tx.serialize(),
+        status: "success",
+        query: `Multi-transfer from ${fromAddress} to ${toAddress}`,
+        errors: []
+    }]);
+}
+
+async function mergeCoinsWrapper(
+    coinType: string,
+    walletAddress: string,
+    maxCoins?: number
+): Promise<string> {
+    const client = initSuiClient();
+    const tx = await createMergeCoinsTx(client, coinType, walletAddress, maxCoins);
+    return JSON.stringify([{
+        reasoning: "Merge coins transaction created successfully",
+        response: tx.serialize(),
+        status: "success",
+        query: `Merge ${maxCoins || 'all'} coins of type ${coinType} for wallet ${walletAddress}`,
+        errors: []
+    }]);
+}
+
+async function estimateGasWrapper(transaction: TransactionBlock): Promise<string> {
+    const client = initSuiClient();
+    const gasEstimate = await estimateGas(client, transaction);
+    return JSON.stringify([{
+        reasoning: "Gas estimation completed successfully",
+        response: gasEstimate.toString(),
+        status: "success",
+        query: "Estimate gas for transaction",
+        errors: []
+    }]);
+}
+
+export function registerAllTools(tools: Tools) {
+    // ... existing registrations ...
+
+    // Transaction Tools
+    tools.registerTool(
+        "transfer_coin",
+        "Tool to transfer a single type of coin to another address",
+        [{
+            name: "fromAddress",
+            type: "string",
+            description: "Sender's wallet address",
+            required: true
+        },
+        {
+            name: "toAddress",
+            type: "string",
+            description: "Recipient's wallet address",
+            required: true
+        },
+        {
+            name: "tokenType",
+            type: "string",
+            description: "Type of token to transfer (e.g., '0x2::sui::SUI')",
+            required: true
+        },
+        {
+            name: "amount",
+            type: "string",
+            description: "Amount to transfer in base units",
+            required: true
+        }],
+        transferCoinWrapper
+    );
+
+    tools.registerTool(
+        "multi_transfer",
+        "Tool to transfer multiple coins in a single transaction",
+        [{
+            name: "fromAddress",
+            type: "string",
+            description: "Sender's wallet address",
+            required: true
+        },
+        {
+            name: "toAddress",
+            type: "string",
+            description: "Recipient's wallet address",
+            required: true
+        },
+        {
+            name: "transfers",
+            type: "array",
+            description: "Array of token transfers with token type and amount",
+            required: true
+        }],
+        multiTransferWrapper
+    );
+
+    tools.registerTool(
+        "merge_coins",
+        "Tool to merge multiple coins of the same type",
+        [{
+            name: "coinType",
+            type: "string",
+            description: "Type of coins to merge",
+            required: true
+        },
+        {
+            name: "walletAddress",
+            type: "string",
+            description: "Address owning the coins",
+            required: true
+        },
+        {
+            name: "maxCoins",
+            type: "number",
+            description: "Maximum number of coins to merge",
+            required: false
+        }],
+        mergeCoinsWrapper
+    );
+
+    tools.registerTool(
+        "estimate_gas",
+        "Tool to estimate gas cost for a transaction",
+        [{
+            name: "transaction",
+            type: "object",
+            description: "Transaction block to estimate gas for",
+            required: true
+        }],
+        estimateGasWrapper
+    );
+
+    // ... rest of existing code ...
+```
+
+
+Let me fix the remaining linter errors by adding the missing imports:
+
+```typescript:src/tools/ToolRegistry.ts
+import Tools from "./index";
+import { getCoinPrice, coinsToPrice } from "./PriceTool";
+import { getTokenAPR } from "./APRTool";
+import {
+  getPool,
+  getAllPools,
+  getPoolEvents,
+  getRankedPools,
+  getFilteredPools,
+} from "./PoolTool";
+import {
+  getPoolSpotPrice,
+  getTradeAmountOut,
+  getTradeRoute,
+  getDepositTransaction,
+  getWithdrawTransaction,
+} from "./TradeTool";
+import {
+  buildTransferTx,
+  buildMultiTransferTx,
+  estimateGas,
+  createMergeCoinsTx,
+  TransactionAgent,
+  initSuiClient,
+} from "./TransactionTool";
+import { TokenBalance } from "../../@types/interface";
+import { TransactionBlock } from "@mysten/sui.js/transactions";
+
+// ... rest of the existing code ...
+```
+
+
+Now that we have implemented the transaction tools, here are sample queries for each transaction tool:
+
+1. **Transfer Single Coin**:
+```json
+POST http://localhost:2512/query
+{
+    "prompt": "Transfer 1 SUI from 0x123...abc to 0x456...def"
+}
+```
+
+2. **Multi-Token Transfer**:
+```json
+POST http://localhost:2512/query
+{
+    "prompt": "Transfer 1 SUI and 10 USDC from 0x123...abc to 0x456...def"
+}
+```
+
+3. **Merge Coins**:
+```json
+POST http://localhost:2512/query
+{
+    "prompt": "Merge all SUI coins in wallet 0x123...abc"
+}
+```
+
+4. **Estimate Gas**:
+```json
+POST http://localhost:2512/query
+{
+    "prompt": "Estimate gas cost for transferring 1 SUI from 0x123...abc to 0x456...def"
+}
+```
+
+
+1. **Simple Transfer**:
+```json
+POST http://localhost:2512/query
+{
+    "prompt": "Send 0.5 SUI to wallet 0x456...def"
+}
+```
+
+2. **Multi-coin Transfer**:
+```json
+POST http://localhost:2512/query
+{
+    "prompt": "Send 100 USDC and 1 SUI to 0x456...def"
+}
+```
+
+3. **Merge Request**:
+```json
+POST http://localhost:2512/query
+{
+    "prompt": "Consolidate all my SUI coins into one"
+}
+```
+
+4. **Gas Estimation**:
+```json
+POST http://localhost:2512/query
+{
+    "prompt": "How much gas will it cost to send 5 SUI to 0x456...def?"
+}
+```
+
+

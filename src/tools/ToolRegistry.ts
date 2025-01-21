@@ -15,11 +15,111 @@ import {
   getDepositTransaction,
   getWithdrawTransaction,
 } from "./TradeTool";
+import {
+  buildTransferTx,
+  buildMultiTransferTx,
+  estimateGas,
+  createMergeCoinsTx,
+  TransactionAgent,
+  initSuiClient,
+} from "./TransactionTool";
+import { TokenBalance } from "../../@types/interface";
+import { TransactionBlock } from "@mysten/sui.js/transactions";
 
 /* 
 format for tool registry is:
 tool name, tool description, tool arguments, process(function)
 */
+
+// Transaction wrapper functions
+async function transferCoinWrapper(
+  fromAddress: string,
+  toAddress: string,
+  tokenType: string,
+  amount: string
+): Promise<string> {
+  const client = initSuiClient();
+  const tx = await buildTransferTx(
+    client,
+    fromAddress,
+    toAddress,
+    tokenType,
+    BigInt(amount)
+  );
+  return JSON.stringify([
+    {
+      reasoning: "Transfer transaction created successfully",
+      response: tx.serialize(),
+      status: "success",
+      query: `Transfer ${amount} of ${tokenType} from ${fromAddress} to ${toAddress}`,
+      errors: [],
+    },
+  ]);
+}
+
+async function multiTransferWrapper(
+  fromAddress: string,
+  toAddress: string,
+  transfers: TokenBalance[]
+): Promise<string> {
+  const client = initSuiClient();
+  const tx = await buildMultiTransferTx(
+    client,
+    fromAddress,
+    toAddress,
+    transfers
+  );
+  return JSON.stringify([
+    {
+      reasoning: "Multi-transfer transaction created successfully",
+      response: tx.serialize(),
+      status: "success",
+      query: `Multi-transfer from ${fromAddress} to ${toAddress}`,
+      errors: [],
+    },
+  ]);
+}
+
+async function mergeCoinsWrapper(
+  coinType: string,
+  walletAddress: string,
+  maxCoins?: number
+): Promise<string> {
+  const client = initSuiClient();
+  const tx = await createMergeCoinsTx(
+    client,
+    coinType,
+    walletAddress,
+    maxCoins
+  );
+  return JSON.stringify([
+    {
+      reasoning: "Merge coins transaction created successfully",
+      response: tx.serialize(),
+      status: "success",
+      query: `Merge ${
+        maxCoins || "all"
+      } coins of type ${coinType} for wallet ${walletAddress}`,
+      errors: [],
+    },
+  ]);
+}
+
+async function estimateGasWrapper(
+  transaction: TransactionBlock
+): Promise<string> {
+  const client = initSuiClient();
+  const gasEstimate = await estimateGas(client, transaction);
+  return JSON.stringify([
+    {
+      reasoning: "Gas estimation completed successfully",
+      response: gasEstimate.toString(),
+      status: "success",
+      query: "Estimate gas for transaction",
+      errors: [],
+    },
+  ]);
+}
 
 export function registerAllTools(tools: Tools) {
   // Price Tools
@@ -327,5 +427,104 @@ export function registerAllTools(tools: Tools) {
       },
     ],
     getWithdrawTransaction
+  );
+
+  // Transaction Tools
+  tools.registerTool(
+    "transfer_coin",
+    "Tool to transfer a single type of coin to another address",
+    [
+      {
+        name: "fromAddress",
+        type: "string",
+        description: "Sender's wallet address",
+        required: true,
+      },
+      {
+        name: "toAddress",
+        type: "string",
+        description: "Recipient's wallet address",
+        required: true,
+      },
+      {
+        name: "tokenType",
+        type: "string",
+        description: "Type of token to transfer (e.g., '0x2::sui::SUI')",
+        required: true,
+      },
+      {
+        name: "amount",
+        type: "string",
+        description: "Amount to transfer in base units",
+        required: true,
+      },
+    ],
+    transferCoinWrapper
+  );
+
+  tools.registerTool(
+    "multi_transfer",
+    "Tool to transfer multiple coins in a single transaction",
+    [
+      {
+        name: "fromAddress",
+        type: "string",
+        description: "Sender's wallet address",
+        required: true,
+      },
+      {
+        name: "toAddress",
+        type: "string",
+        description: "Recipient's wallet address",
+        required: true,
+      },
+      {
+        name: "transfers",
+        type: "array",
+        description: "Array of token transfers with token type and amount",
+        required: true,
+      },
+    ],
+    multiTransferWrapper
+  );
+
+  tools.registerTool(
+    "merge_coins",
+    "Tool to merge multiple coins of the same type",
+    [
+      {
+        name: "coinType",
+        type: "string",
+        description: "Type of coins to merge",
+        required: true,
+      },
+      {
+        name: "walletAddress",
+        type: "string",
+        description: "Address owning the coins",
+        required: true,
+      },
+      {
+        name: "maxCoins",
+        type: "number",
+        description: "Maximum number of coins to merge",
+        required: false,
+      },
+    ],
+    mergeCoinsWrapper
+  );
+
+  tools.registerTool(
+    "estimate_gas",
+    "Tool to estimate gas cost for a transaction",
+    [
+      {
+        name: "transaction",
+        type: "object",
+        description: "Transaction block to estimate gas for",
+        required: true,
+      },
+    ],
+    estimateGasWrapper
   );
 }
