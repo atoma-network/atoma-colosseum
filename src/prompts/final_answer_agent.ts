@@ -7,7 +7,7 @@ Write down the response in this format
 
 [{
 "reasoning": string, // explain your reasoning in clear terms
-"response": string, // clear terms detailed until explicitly stated otherwise
+"response": string | JSON // clear terms detailed until explicitly stated otherwise. IF RESPONSE IS JSON, RETURN IT AS A JSON OBJECT
 "status": string ("success"| "failure") ,// success if no errors
 "query": string ,// initial user query; 
 "errors": any[], //if any
