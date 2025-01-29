@@ -31,26 +31,23 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let config = GuessAiConfig::from_file_path(&args.config_path);
 
-    let atoma_sdk = AtomaSdk::new(
-        std::env::var("ATOMA_API_KEY").unwrap(),
-        std::env::var("ATOMA_MODEL").unwrap(),
-    );
+    let atoma_sdk = AtomaSdk::new(config.atoma_api_key.clone(), config.model.clone());
     let guess_ai_db = ObjectID::from_str(&config.guess_ai_db).unwrap();
     let guess_ai_package_id = ObjectID::from_str(&config.guess_ai_package_id).unwrap();
-    let config_path = Path::new(&args.config_path);
     let request_timeout = config.request_timeout.map(|t| Duration::from_secs(t));
     let max_concurrent_requests = config.max_concurrent_requests.map(|t| t as u64);
-    let wallet_context = WalletContext::new(config_path, request_timeout, max_concurrent_requests)?;
+    let wallet_context = WalletContext::new(
+        Path::new(&config.sui_config_path),
+        request_timeout,
+        max_concurrent_requests,
+    )?;
     let sui_client_ctx = SuiClientContext::new(guess_ai_db, guess_ai_package_id, wallet_context);
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let engine = GuessAiEngine::new(atoma_sdk, config, sui_client_ctx, shutdown_rx.clone()).await?;
 
-    let ctrl_c = trigger_shutdown_on_ctrl_c(shutdown_tx, shutdown_rx);
+    let ctrl_c = trigger_shutdown_on_ctrl_c(shutdown_tx.clone(), shutdown_rx);
 
-    let join_handle = tokio::spawn(async move {
-        engine.run().await?;
-        Ok::<(), GuessAiEngineError>(())
-    });
+    let join_handle = spawn_with_shutdown(engine.run(), shutdown_tx);
 
     let (guess_ai_result, ctrl_c_result) = tokio::try_join!(join_handle, ctrl_c)?;
     handle_tasks_results(guess_ai_result, ctrl_c_result)?;
@@ -62,6 +59,46 @@ async fn main() -> Result<()> {
     );
 
     Ok(())
+}
+
+/// Spawns a task that will automatically trigger shutdown if it encounters an error
+///
+/// This helper function wraps a future in a tokio task that monitors its execution.
+/// If the wrapped future returns an error, it will automatically trigger a shutdown
+/// signal through the provided sender.
+///
+/// # Arguments
+///
+/// * `f` - The future to execute, which must return a `Result<()>`
+/// * `shutdown_sender` - A channel sender used to signal shutdown to other parts of the application
+///
+/// # Returns
+///
+/// Returns a `JoinHandle` for the spawned task
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let (shutdown_tx, shutdown_rx) = watch::channel(false);
+/// let handle = spawn_with_shutdown(some_fallible_task(), shutdown_tx);
+/// ```
+pub fn spawn_with_shutdown<F>(
+    f: F,
+    shutdown_sender: tokio::sync::watch::Sender<bool>,
+) -> tokio::task::JoinHandle<Result<()>>
+where
+    F: std::future::Future<Output = Result<()>> + Send + 'static,
+{
+    tokio::task::spawn(async move {
+        let res = f.await;
+        if res.is_err() {
+            // Only send shutdown signal if the task failed
+            shutdown_sender
+                .send(true)
+                .map_err(|e| GuessAiEngineError::InternalError(e.to_string()))?;
+        }
+        res.map_err(Into::into)
+    })
 }
 
 #[instrument(

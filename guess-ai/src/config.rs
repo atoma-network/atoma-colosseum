@@ -47,6 +47,9 @@ pub struct GuessAiConfig {
 
     /// Maximum number of concurrent requests to the Sui RPC node
     pub max_concurrent_requests: Option<usize>,
+
+    /// Sui's config path
+    pub sui_config_path: String,
 }
 
 impl GuessAiConfig {

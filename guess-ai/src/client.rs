@@ -102,8 +102,8 @@ impl SuiClientContext {
                 vec![],
                 vec![
                     SuiJsonValue::from_object_id(self.guess_ai_db),
-                    SuiJsonValue::new(public_key.to_bytes().into())?,
                     SuiJsonValue::new(tdx_quote_bytes.into())?,
+                    SuiJsonValue::new(public_key.to_bytes().into())?,
                 ],
                 gas,
                 gas_budget.unwrap_or(GAS_BUDGET),

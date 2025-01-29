@@ -29,3 +29,7 @@ toml = "0.8.19"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
 x25519-dalek = { version = "2.0.1", features = ["static_secrets"] }
+
+[features]
+default = ["confidential-compute"]
+confidential-compute = []

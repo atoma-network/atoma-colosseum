@@ -7,10 +7,10 @@ use thiserror::Error;
 use tracing::{error, info, instrument};
 use x25519_dalek::{PublicKey, StaticSecret};
 
-use crate::types::{
-    ChatCompletionRequest, ChatCompletionResponse, ConfidentialComputeRequest,
-    ConfidentialComputeResponse,
-};
+use crate::types::{ChatCompletionRequest, ChatCompletionResponse, ConfidentialComputeRequest};
+
+#[cfg(feature = "confidential-compute")]
+use crate::types::ConfidentialComputeResponse;
 
 /// The header key for the authorization header
 const AUTHORIZATION: &str = "Authorization";
@@ -169,6 +169,7 @@ impl AtomaSdk {
             model = self.model,
         )
     )]
+    #[cfg(feature = "confidential-compute")]
     pub async fn confidential_chat_completions(
         &self,
         client_private_key: &StaticSecret,
@@ -250,6 +251,50 @@ impl AtomaSdk {
             signature.as_ref().map(|s| s.as_str()),
         )?;
         Ok(response_body)
+    }
+
+    /// Sends a chat completion request to the Atoma API
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - The chat completion request to be encrypted and sent
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result` containing the `ChatCompletionResponse` if successful.
+    ///
+    /// # Errors
+    ///
+    /// Returns `AtomaSdkError` if:
+    /// - HTTP request failed
+    #[instrument(
+        level = "info",
+        name = "chat/completions",
+        skip_all,
+        fields(
+            model = self.model,
+        )
+    )]
+    #[cfg(not(feature = "confidential-compute"))]
+    pub async fn chat_completions(
+        &self,
+        request: ChatCompletionRequest,
+    ) -> Result<ChatCompletionResponse> {
+        let client = reqwest::Client::new();
+        let response = client
+            .post("https://api.atoma.network/v1/chat/completions")
+            .header(AUTHORIZATION, format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(AtomaSdkError::RequestNodePublicUrlError(
+                response.error_for_status().unwrap_err(),
+            ));
+        }
+
+        Ok(response.json().await?)
     }
 }
 
