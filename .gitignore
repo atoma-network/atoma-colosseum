@@ -1,1 +1,4 @@
-secret-guessing/target/
+guess-ai/target/
+guess-ai/cli/target/
+.env
+config.toml

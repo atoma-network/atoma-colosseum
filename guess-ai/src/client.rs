@@ -11,7 +11,7 @@ use sui_sdk::{
 use tracing::{error, info, instrument};
 use x25519_dalek::PublicKey;
 
-use crate::SECRET_GUESSING_MODULE_NAME;
+use crate::GUESS_AI_MODULE_NAME;
 
 /// The gas budget for the node registration transaction
 const GAS_BUDGET: u64 = 50_000_000; // 0.05 SUI
@@ -29,10 +29,10 @@ type Result<T> = std::result::Result<T, SuiClientError>;
 /// GuessAI game smart contract, on the Sui blockchain.
 pub struct SuiClientContext {
     /// The ID of the Secret Guessing database object
-    secret_guessing_db: ObjectID,
+    guess_ai_db: ObjectID,
 
     /// The ID of the Secret Guessing package
-    secret_guessing_package_id: ObjectID,
+    guess_ai_package_id: ObjectID,
 
     /// The wallet context for the current Sui client
     wallet_context: WalletContext,
@@ -41,17 +41,39 @@ pub struct SuiClientContext {
 impl SuiClientContext {
     /// Constructor
     pub fn new(
-        secret_guessing_db: ObjectID,
-        secret_guessing_package_id: ObjectID,
+        guess_ai_db: ObjectID,
+        guess_ai_package_id: ObjectID,
         wallet_context: WalletContext,
     ) -> Self {
         Self {
-            secret_guessing_db,
-            secret_guessing_package_id,
+            guess_ai_db,
+            guess_ai_package_id,
             wallet_context,
         }
     }
 
+    /// Submits a node's public key and TDX attestation to the GuessAI game smart contract.
+    ///
+    /// This method executes a Move call to register or update a node's public key and TDX attestation
+    /// in the Secret Guessing game's database.
+    ///
+    /// # Arguments
+    ///
+    /// * `public_key` - The x25519 public key of the node
+    /// * `tdx_quote_bytes` - The TDX attestation quote bytes
+    /// * `gas` - Optional ObjectID to use for gas payment. If None, the system will select an appropriate gas object
+    /// * `gas_budget` - Optional gas budget for the transaction. Defaults to 50,000,000 (0.05 SUI) if None
+    /// * `gas_price` - Optional gas price for the transaction. If None, the system will use the network's reference price
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result<String>` containing the transaction digest if successful, or a `SuiClientError` if the operation fails
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// * The wallet context fails to get the active address
+    /// * The transaction execution fails
     #[instrument(
         level = "info",
         skip_all,
@@ -74,12 +96,12 @@ impl SuiClientContext {
             .transaction_builder()
             .move_call(
                 active_address,
-                self.secret_guessing_package_id,
-                SECRET_GUESSING_MODULE_NAME,
+                self.guess_ai_package_id,
+                GUESS_AI_MODULE_NAME,
                 RESUBMIT_TDX_ATTESTATION_FUNCTION_NAME,
                 vec![],
                 vec![
-                    SuiJsonValue::from_object_id(self.secret_guessing_db),
+                    SuiJsonValue::from_object_id(self.guess_ai_db),
                     SuiJsonValue::new(public_key.to_bytes().into())?,
                     SuiJsonValue::new(tdx_quote_bytes.into())?,
                 ],
@@ -141,12 +163,12 @@ impl SuiClientContext {
             .transaction_builder()
             .move_call(
                 active_address,
-                self.secret_guessing_package_id,
-                SECRET_GUESSING_MODULE_NAME,
+                self.guess_ai_package_id,
+                GUESS_AI_MODULE_NAME,
                 WITHDRAW_FUNDS_FROM_TREASURY_POOL_FUNCTION_NAME,
                 vec![],
                 vec![
-                    SuiJsonValue::from_object_id(self.secret_guessing_db),
+                    SuiJsonValue::from_object_id(self.guess_ai_db),
                     SuiJsonValue::from_object_id(ObjectID::from_str(
                         winner_address.to_string().as_str(),
                     )?),

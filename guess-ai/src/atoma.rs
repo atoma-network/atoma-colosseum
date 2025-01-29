@@ -1,7 +1,6 @@
 use aes_gcm::{aead::Aead, Aes256Gcm, KeyInit};
 use base64::engine::{general_purpose::STANDARD, Engine};
 use hkdf::Hkdf;
-use rand::Rng;
 use serde::Deserialize;
 use sha2::Sha256;
 use thiserror::Error;
@@ -181,8 +180,8 @@ impl AtomaSdk {
             ..
         } = self.request_node_public_url().await?;
         let node_public_key = STANDARD.decode(public_key)?;
-        let nonce = rand::thread_rng().gen::<[u8; NONCE_SIZE]>();
-        let salt = rand::thread_rng().gen::<[u8; SALT_SIZE]>();
+        let nonce = rand::random::<[u8; NONCE_SIZE]>();
+        let salt = rand::random::<[u8; SALT_SIZE]>();
 
         let node_public_key_bytes: [u8; PUBLIC_KEY_SIZE] =
             node_public_key.try_into().map_err(|npk: Vec<u8>| {
