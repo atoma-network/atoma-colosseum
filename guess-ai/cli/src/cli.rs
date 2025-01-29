@@ -68,9 +68,6 @@ impl SuiClientContext {
     ///
     /// # Returns
     /// * `Result<String>` - The transaction digest if successful, or an error if the transaction fails
-    ///
-    /// # Example
-    /// ```rust,ignore
     #[instrument(
         level = "info",
         name = "set_fee_rate_increase_per_guess_per_mille",
