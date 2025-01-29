@@ -8,4 +8,4 @@ pub mod twitter;
 pub mod types;
 
 /// The Atoma contract db module name.
-pub(crate) const GUESS_AI_MODULE_NAME: &str = "guess_ai";
+pub(crate) const GUESS_AI_MODULE_NAME: &str = "contract";

@@ -53,7 +53,7 @@ pub async fn generate_new_secret(
     client_private_key: &StaticSecret,
     generate_secret_prompt: String,
     model: String,
-    random_seed: u64,
+    random_seed: i64,
     sui_client_ctx: &mut SuiClientContext,
 ) -> Result<String> {
     let client_public_key = PublicKey::from(client_private_key);
@@ -72,9 +72,12 @@ pub async fn generate_new_secret(
         "seed": random_seed,
     }))?;
 
+    #[cfg(feature = "confidential-compute")]
     let response_body = atoma_sdk
         .confidential_chat_completions(&client_private_key, chat_completions_request)
         .await?;
+    #[cfg(not(feature = "confidential-compute"))]
+    let response_body = atoma_sdk.chat_completions(chat_completions_request).await?;
 
     let secret = serde_json::from_str::<SecretPromptResponse>(
         &response_body.choices[0].message.content.clone(),

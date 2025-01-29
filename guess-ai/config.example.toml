@@ -1,0 +1,18 @@
+[guess_ai]
+atoma_api_key = "" # API key for Atoma service authentication
+twitter_consumer_key = "" # Twitter consumer key
+twitter_consumer_secret = "" # Twitter consumer secret
+twitter_access_token = "" # Twitter access token
+twitter_access_token_secret = "" # Twitter access token secret
+cursor_path = "./cursor.toml" # File path for storing cursor information
+hint_wait_count = 10 # The number of consecutive guesses to wait before providing a new hint
+http_rpc_node_addr = "https://fullnode.testnet.sui.io:443" # HTTP address of the RPC node
+model = "" # The model to use for the Atoma service
+# limit = 1 # Limit for the number of events to fetch per request
+guess_ai_package_id = "" # Package identifier for the smart contract
+guess_ai_db = "" # Database identifier for the smart contract
+# request_timeout = 1 # Optional timeout duration for requests in seconds
+# max_concurrent_requests = 1 # Maximum number of concurrent requests to the Sui RPC node
+
+sui_config_path = "" # Path to the Sui client configuration file, by default (on Linux, or MacOS)
+
