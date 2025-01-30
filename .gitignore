@@ -3,3 +3,4 @@ guess-ai/cli/target/
 .env
 config.toml
 cursor.toml
+.vscode/

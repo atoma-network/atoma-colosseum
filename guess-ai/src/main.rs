@@ -1,12 +1,14 @@
-use std::{path::Path, str::FromStr, time::Duration};
+use std::{path::Path, str::FromStr, sync::Arc, time::Duration};
 
+use anyhow::{Error, Result};
 use clap::Parser;
 use dotenv::dotenv;
 use guess_ai::{
     atoma::AtomaSdk,
     client::SuiClientContext,
     config::GuessAiConfig,
-    engine::{GuessAiEngine, GuessAiEngineError, Result},
+    engine::{GuessAiEngine, GuessAiEngineError},
+    http_server::{start_server, HttpServerConfig},
 };
 use sui_sdk::{types::base_types::ObjectID, wallet_context::WalletContext};
 use tokio::task::JoinHandle;
@@ -44,13 +46,21 @@ async fn main() -> Result<()> {
     let sui_client_ctx = SuiClientContext::new(guess_ai_db, guess_ai_package_id, wallet_context);
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     let engine = GuessAiEngine::new(atoma_sdk, config, sui_client_ctx, shutdown_rx.clone()).await?;
+    let server = start_server(
+        HttpServerConfig::from_file_path(&args.config_path),
+        Arc::clone(&engine.answers),
+        shutdown_rx.clone(),
+    );
 
     let ctrl_c = trigger_shutdown_on_ctrl_c(shutdown_tx.clone(), shutdown_rx);
 
-    let join_handle = spawn_with_shutdown(engine.run(), shutdown_tx);
+    let join_handle = spawn_with_shutdown(engine.run(), &shutdown_tx);
 
-    let (guess_ai_result, ctrl_c_result) = tokio::try_join!(join_handle, ctrl_c)?;
-    handle_tasks_results(guess_ai_result, ctrl_c_result)?;
+    let server = spawn_with_shutdown(server, &shutdown_tx);
+
+    let (guess_ai_result, server_result, ctrl_c_result) =
+        tokio::try_join!(join_handle, server, ctrl_c)?;
+    handle_tasks_results(guess_ai_result, server_result, ctrl_c_result)?;
 
     info!(
         target = "guess-ai-service",
@@ -82,13 +92,15 @@ async fn main() -> Result<()> {
 /// let (shutdown_tx, shutdown_rx) = watch::channel(false);
 /// let handle = spawn_with_shutdown(some_fallible_task(), shutdown_tx);
 /// ```
-pub fn spawn_with_shutdown<F>(
+pub fn spawn_with_shutdown<F, E>(
     f: F,
-    shutdown_sender: tokio::sync::watch::Sender<bool>,
+    shutdown_sender: &tokio::sync::watch::Sender<bool>,
 ) -> tokio::task::JoinHandle<Result<()>>
 where
-    F: std::future::Future<Output = Result<()>> + Send + 'static,
+    E: Into<Error>,
+    F: std::future::Future<Output = Result<(), E>> + Send + 'static,
 {
+    let shutdown_sender = shutdown_sender.clone();
     tokio::task::spawn(async move {
         let res = f.await;
         if res.is_err() {
@@ -123,10 +135,10 @@ fn trigger_shutdown_on_ctrl_c(
                 );
                 shutdown_tx
                     .send(true)?;
-                Ok::<(), GuessAiEngineError>(())
+                Ok::<(), Error>(())
             }
             _ = shutdown_rx.changed() => {
-                Ok::<(), GuessAiEngineError>(())
+                Ok::<(), Error>(())
             }
         }
     })
@@ -137,7 +149,11 @@ fn trigger_shutdown_on_ctrl_c(
     skip_all,
     fields(event = "guess-ai-stop", message = "guess-ai-stop")
 )]
-fn handle_tasks_results(guess_ai_result: Result<()>, ctrl_c_result: Result<()>) -> Result<()> {
+fn handle_tasks_results(
+    guess_ai_result: Result<()>,
+    server_result: Result<()>,
+    ctrl_c_result: Result<()>,
+) -> Result<()> {
     let result_handler = |result: Result<()>, message: &str| {
         if let Err(e) = result {
             error!(
@@ -151,6 +167,7 @@ fn handle_tasks_results(guess_ai_result: Result<()>, ctrl_c_result: Result<()>) 
         Ok(())
     };
     result_handler(guess_ai_result, "Guess AI terminated abruptly")?;
+    result_handler(server_result, "Http server terminated abruptly")?;
     result_handler(ctrl_c_result, "Ctrl-C received")?;
     Ok(())
 }

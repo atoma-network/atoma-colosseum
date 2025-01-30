@@ -3,6 +3,7 @@ pub mod client;
 pub mod config;
 pub mod engine;
 pub mod generate_secret;
+pub mod http_server;
 // pub mod tdx;
 pub mod twitter;
 pub mod types;
