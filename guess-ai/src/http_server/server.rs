@@ -49,7 +49,6 @@ pub async fn start_server(
                 .await
                 .expect("Error receiving shutdown signal")
         });
-    dbg!("Starting server");
     server.await?;
     Ok(())
 }
