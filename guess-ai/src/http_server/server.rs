@@ -8,6 +8,7 @@ use axum::{
 };
 use tokio::{net::TcpListener, sync::RwLock};
 use tower_http::cors::{Any, CorsLayer};
+use tracing::instrument;
 
 use crate::engine::Answers;
 
@@ -18,7 +19,7 @@ use super::{
 
 const GET_GUESS_RESPONSE_PATH: &str = "/get_guess_response";
 const WAIT_BETWEEN_GUESS_RESPONSE_CHECKS_MS: u64 = 10;
-const GUESS_RESPONSE_TIMEOUT_SEC: u64 = 1;
+const GUESS_RESPONSE_TIMEOUT_SEC: u64 = 15;
 
 #[derive(Clone)]
 pub struct HttpServerState {
@@ -67,6 +68,7 @@ fn create_router(state: HttpServerState) -> Router {
 
 /// Handles the GET request for the guess response.
 /// This function will wait for the response to be available and will return it.
+#[instrument(level = "info", skip(state))]
 async fn get_guess_response_handler(
     State(state): State<HttpServerState>,
     Query(query): Query<GuessQuery>,
