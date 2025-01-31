@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 pub struct GuessQuery {
     /// The guess to evaluate.
     pub guess: u64,
+    /// The guess game ID.
+    pub guess_game_id: u64,
 }
 
 #[derive(Serialize, Debug)]

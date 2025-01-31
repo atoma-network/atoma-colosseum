@@ -9,6 +9,7 @@ use axum::{
 use reqwest::StatusCode;
 use tokio::{net::TcpListener, sync::RwLock};
 use tower_http::cors::{Any, CorsLayer};
+use tracing::instrument;
 
 use crate::engine::Answers;
 
@@ -20,7 +21,7 @@ use super::{
 const GET_GUESS_RESPONSE_PATH: &str = "/get_guess_response";
 const HEALTH_PATH: &str = "/health";
 const WAIT_BETWEEN_GUESS_RESPONSE_CHECKS_MS: u64 = 10;
-const GUESS_RESPONSE_TIMEOUT_SEC: u64 = 1;
+const GUESS_RESPONSE_TIMEOUT_SEC: u64 = 15;
 
 #[derive(Clone)]
 pub struct HttpServerState {
@@ -83,7 +84,9 @@ async fn get_guess_response_handler(
     let start_time = std::time::Instant::now();
     loop {
         let answers = state.answers.read().await;
-        let response = answers.get(&query.guess);
+        let response = answers
+            .get(&query.guess_game_id)
+            .and_then(|answers| answers.get(&query.guess));
         if let Some(response) = response {
             break Ok(Json(GuessResponse {
                 correct: response.correct,
