@@ -6,6 +6,7 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use reqwest::StatusCode;
 use tokio::{net::TcpListener, sync::RwLock};
 use tower_http::cors::{Any, CorsLayer};
 
@@ -17,6 +18,7 @@ use super::{
 };
 
 const GET_GUESS_RESPONSE_PATH: &str = "/get_guess_response";
+const HEALTH_PATH: &str = "/health";
 const WAIT_BETWEEN_GUESS_RESPONSE_CHECKS_MS: u64 = 10;
 const GUESS_RESPONSE_TIMEOUT_SEC: u64 = 1;
 
@@ -61,12 +63,19 @@ fn create_router(state: HttpServerState) -> Router {
         .allow_headers(Any);
     Router::new()
         .route(GET_GUESS_RESPONSE_PATH, get(get_guess_response_handler))
+        .route(HEALTH_PATH, get(health))
         .layer(cors)
         .with_state(state)
 }
 
+#[instrument(level = "info")]
+pub async fn health() -> StatusCode {
+    StatusCode::OK
+}
+
 /// Handles the GET request for the guess response.
 /// This function will wait for the response to be available and will return it.
+#[instrument(level = "info", skip(state))]
 async fn get_guess_response_handler(
     State(state): State<HttpServerState>,
     Query(query): Query<GuessQuery>,
