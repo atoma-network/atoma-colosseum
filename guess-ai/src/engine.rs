@@ -37,7 +37,7 @@ pub struct Answer {
     pub explanation: String,
 }
 
-pub type Answers = HashMap<u64, Answer>;
+pub type Answers = HashMap<u64, HashMap<u64, Answer>>;
 
 /// A subscriber for Sui blockchain events.
 ///
@@ -207,6 +207,9 @@ impl GuessAiEngine {
             GuessAiEvent::NewGuessEvent(event) => {
                 self.handle_new_guess_event(event, sender).await?;
             }
+            GuessAiEvent::NewGuessGameEvent(_event) => {
+                // This event is emitted when a new guess game is started, but we already handled the new guess setup when the game ended
+            }
             GuessAiEvent::RotateTdxQuoteEvent(event) => {
                 self.handle_rotate_tdx_quote_event(event).await?;
             }
@@ -290,6 +293,7 @@ impl GuessAiEngine {
             guess,
             fee,
             guess_count,
+            guess_game_id,
             treasury_pool_balance,
         } = event;
 
@@ -327,25 +331,48 @@ impl GuessAiEngine {
             &response_body.choices[0].message.content.clone(),
         )?;
 
-        self.answers.write().await.insert(
-            event.guess_count,
-            Answer {
-                correct: answer.is_correct,
-                explanation: answer.explanation,
-            },
-        );
+        {
+            let mut answers = self.answers.write().await;
+            if !answers.contains_key(&guess_game_id) {
+                answers.insert(guess_game_id, HashMap::new());
+            }
+            answers
+                .get_mut(&guess_game_id)
+                .expect("The guess_game_id was inserted above")
+                .insert(
+                    event.guess_count,
+                    Answer {
+                        correct: answer.is_correct,
+                        explanation: answer.explanation,
+                    },
+                );
+        }
 
         if answer.is_correct {
             info!(
                 target = "sui_event_subscriber",
                 event = "new-guess-event",
-                "Guess is correct for sender: {sender}, guess: {guess}, fee: {fee}, guess_count: {guess_count}, treasury_pool_balance: {treasury_pool_balance}"
+                "Guess is correct for sender: {sender}, guess: {guess}, fee: {fee}, guess_count: {guess_count}, guess_game_id: {guess_game_id}, treasury_pool_balance: {treasury_pool_balance}"
             );
 
             let tx_hash = self
                 .sui_client_ctx
                 .withdraw_funds_from_treasury_pool(sender, None, None, None)
                 .await?;
+
+            // The game ended, we start a new game with new word
+            let generate_secret_prompt = prompts::create_secret_prompt();
+            let random_seed = rand::random::<i64>();
+            self.secret = generate_new_secret(
+                &self.atoma_sdk,
+                &self.client_private_key,
+                generate_secret_prompt,
+                self.config.model.clone(),
+                random_seed,
+                &mut self.sui_client_ctx,
+            )
+            .await?;
+            self.hints.clear();
             info!(
                 target = "sui_event_subscriber",
                 event = "new-guess-event",
@@ -704,6 +731,7 @@ pub(crate) mod events {
     pub(crate) enum GuessAiEvent {
         PublishEvent(PublishEvent),
         NewGuessEvent(NewGuessEvent),
+        NewGuessGameEvent(NewGuessGameEvent),
         RotateTdxQuoteEvent(RotateTdxQuoteEvent),
         TDXQuoteResubmittedEvent(TDXQuoteResubmittedEvent),
     }
@@ -713,6 +741,7 @@ pub(crate) mod events {
     pub enum GuessAiEventIdentifier {
         PublishEvent,
         NewGuessEvent,
+        NewGuessGameEvent,
         RotateTdxQuoteEvent,
         TDXQuoteResubmittedEvent,
     }
@@ -724,6 +753,7 @@ pub(crate) mod events {
             Ok(match s {
                 "PublishEvent" => GuessAiEventIdentifier::PublishEvent,
                 "NewGuessEvent" => GuessAiEventIdentifier::NewGuessEvent,
+                "NewGuessGameEvent" => GuessAiEventIdentifier::NewGuessGameEvent,
                 "RotateTdxQuoteEvent" => GuessAiEventIdentifier::RotateTdxQuoteEvent,
                 "TDXQuoteResubmittedEvent" => GuessAiEventIdentifier::TDXQuoteResubmittedEvent,
                 _ => {
@@ -790,6 +820,9 @@ pub(crate) mod events {
             GuessAiEventIdentifier::NewGuessEvent => {
                 Ok(GuessAiEvent::NewGuessEvent(serde_json::from_value(value)?))
             }
+            GuessAiEventIdentifier::NewGuessGameEvent => Ok(GuessAiEvent::NewGuessGameEvent(
+                serde_json::from_value(value)?,
+            )),
             GuessAiEventIdentifier::RotateTdxQuoteEvent => Ok(GuessAiEvent::RotateTdxQuoteEvent(
                 serde_json::from_value(value)?,
             )),
@@ -825,6 +858,25 @@ pub(crate) mod events {
         /// The guess count
         #[serde(deserialize_with = "deserialize_string_to_u64")]
         pub(crate) guess_count: u64,
+
+        /// The guess game id
+        #[serde(deserialize_with = "deserialize_string_to_u64")]
+        pub(crate) guess_game_id: u64,
+
+        /// The treasury pool balance
+        #[serde(deserialize_with = "deserialize_string_to_u64")]
+        pub(crate) treasury_pool_balance: u64,
+    }
+
+    #[derive(Clone, Debug, Serialize, Deserialize)]
+    pub(crate) struct NewGuessGameEvent {
+        /// The fee paid for the guess
+        #[serde(deserialize_with = "deserialize_string_to_u64")]
+        pub(crate) fee: u64,
+
+        /// The guess game id
+        #[serde(deserialize_with = "deserialize_string_to_u64")]
+        pub(crate) guess_game_id: u64,
 
         /// The treasury pool balance
         #[serde(deserialize_with = "deserialize_string_to_u64")]
