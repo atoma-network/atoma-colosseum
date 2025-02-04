@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--log.level=INFO"
+      # EntryPoints
+      - "--entryPoints.web.address=:80"
+      - "--entryPoints.websecure.address=:443"
+      # Enable Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedByDefault=false"
+      # Let's Encrypt (ACME) configuration
+      - "--certificatesResolvers.myresolver.acme.httpChallenge=true"
+      - "--certificatesResolvers.myresolver.acme.httpChallenge.entryPoint=web"
+      - "--certificatesResolvers.myresolver.acme.email=${ACME_EMAIL}"
+      - "--certificatesResolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
+    labels:
+      - "traefik.http.routers.traefik.rule=Host(`traefik.atoma.network`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=myresolver"
+      - "traefik.http.services.traefik.loadbalancer.server.port=8090"
+    networks:
+      - guess-ai-network
+      
+  app:
+    build:
+      image: ghcr.io/atoma-network/guess-ai:latest
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TRACE_LEVEL: ${TRACE_LEVEL:-info}
+    volumes:
+      - sui-config-volume:/root/.sui/sui_config
+      - ${SUI_CONFIG_PATH:-~/.sui/sui_config}:/tmp/.sui/sui_config
+      - ${CONFIG_PATH:-./config.toml}:/app/config.toml
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prover.rule=Host(`guess-ai.atoma.network`)"
+      - "traefik.http.routers.prover.entrypoints=websecure"
+      - "traefik.http.routers.prover.tls.certresolver=myresolver"
+      - "traefik.http.routers.prover.service=prover_service"
+      - "traefik.http.services.prover_service.loadbalancer.server.port=8080" # This is the internal port of the docker
+    networks:
+      - guess-ai-network
+
+volumes:
+  sui-config-volume:
+
+networks:
+  guess-ai-network:
+    driver: bridge
