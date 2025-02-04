@@ -372,14 +372,13 @@ impl GuessAiEngine {
                 &mut self.sui_client_ctx,
             )
             .await?;
-            dbg!(&self.secret);
             self.hints.clear();
             info!(
                 target = "sui_event_subscriber",
                 event = "new-guess-event",
                 "Withdrew funds from treasury pool successfully, tx_hash: {tx_hash}"
             );
-            // todo!("Add a client for social media to post the tx_hash and sender of the winner");
+            todo!("Add a client for social media to post the tx_hash and sender of the winner");
         }
 
         if guess_count % self.config.hint_wait_count == 0 {
@@ -416,7 +415,7 @@ impl GuessAiEngine {
 
             self.hints.push(hint.hint.clone());
 
-            // todo!("Add a client for social media to post the hint");
+            todo!("Add a client for social media to post the hint");
         }
 
         Ok(())
